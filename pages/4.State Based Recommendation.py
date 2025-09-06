@@ -15,23 +15,23 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Load data
-California = pd.read_csv('Data/California/California.csv', sep=',')
+California = pd.read_csv('./data/California/California.csv', sep=',')
 California["Location"] = California["Street Address"] +', '+ California["Location"]
 California = California.drop(['Street Address',], axis=1)
 
-New_York = pd.read_csv('Data/New York/New_York.csv', sep=',')
+New_York = pd.read_csv('data/New York/New_York.csv', sep=',')
 New_York["Location"] = New_York["Street Address"] +', '+ New_York["Location"]
 New_York = New_York.drop(['Street Address', ], axis=1)
 
-New_Jersey = pd.read_csv('Data/New Jersey/New_Jersey.csv', sep=',')
+New_Jersey = pd.read_csv('data/New Jersey/New_Jersey.csv', sep=',')
 New_Jersey["Location"] = New_Jersey["Street Address"] +', '+ New_Jersey["Location"]
 New_Jersey  = New_Jersey.drop(['Street Address', ], axis=1)
 
-Texas = pd.read_csv('Data/Texas/Texas.csv', sep=',')
+Texas = pd.read_csv('data/Texas/Texas.csv', sep=',')
 Texas["Location"] = Texas["Street Address"] +', '+ Texas["Location"]
 Texas = Texas.drop(['Street Address', ],axis=1)
 
-Washington = pd.read_csv('Data/Washington/Washington.csv', sep=',')
+Washington = pd.read_csv('data/Washington/Washington.csv', sep=',')
 Washington["Location"] = Washington["Street Address"] +', '+ Washington["Location"]
 Washington = Washington.drop(['Street Address', ], axis=1)
 
@@ -53,13 +53,13 @@ def details(dataframe):
 
         # REVIEWS
         if Reviews == '4.5':
-            image = Image.open('Data/Ratings/Img4.5.png')
+            image = Image.open('data/Ratings/Img4.5.png')
             st.image(image, use_column_width=True)
         elif Reviews == '4':
-            image = Image.open('Data/Ratings/Img4.0.png')
+            image = Image.open('data/Ratings/Img4.0.png')
             st.image(image, use_column_width=True)
         elif Reviews == '5':
-            image = Image.open('Data/Ratings/Img5.0.png')
+            image = Image.open('data/Ratings/Img5.0.png')
             st.image(image, use_column_width=True)
         else:
             pass
