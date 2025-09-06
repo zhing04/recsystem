@@ -17,7 +17,7 @@ df = df.reset_index(drop=True)
 
 # Streamlit configuration
 st.set_page_config(layout='centered', initial_sidebar_state='expanded')
-st.sidebar.image('Data/App_icon.png')
+st.sidebar.image('data/App_icon.png')
 
 # Main page title and introduction
 st.markdown("<h1 style='text-align: center;'>Recommended</h1>", unsafe_allow_html=True)
