@@ -15,7 +15,7 @@ Discover fascinating trends and data-driven analysis of the culinary landscape. 
 """)
 
 # Load data
-df = pd.read_csv("./Data/TripAdvisor_RestauarantRecommendation.csv")
+df = pd.read_csv("./data/raw/TripAdvisor_RestauarantRecommendation.csv")
 df = df.drop(['Contact Number', 'Trip_advisor Url', 'Menu'], axis=1)
 df = df.drop([1744, 2866])
 df = df.reset_index(drop=True)
