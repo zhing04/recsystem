@@ -5,7 +5,7 @@ from bokeh.models.widgets import Div
 from PIL import Image
 
 st.set_page_config(layout='centered', initial_sidebar_state='expanded')
-st.sidebar.image('Data/App_icon.png')
+st.sidebar.image('data/App_icon.png')
 st.markdown("<h1 style='text-align: center;'>Restaurants</h1>", unsafe_allow_html=True)
 
 st.markdown("""
@@ -88,7 +88,7 @@ def details(dataframe):
             st.info('Phone:- ' + contact_no)
 
     st.text("")
-    image = Image.open('Data/food_2.jpg')
+    image = Image.open('data/food_2.jpg')
     st.image(image, use_column_width=True)
 
 # Call the details function based on the selected state
@@ -110,7 +110,7 @@ feedback_comment = st.text_area('Your Feedback')
 
 if st.button('Submit Feedback'):
     # Save the feedback to a CSV file
-    feedback_file = 'Data/feedback.csv'
+    feedback_file = 'data/feedback.csv'
     
     # Create the CSV file if it doesn't exist
     if not os.path.isfile(feedback_file):
