@@ -6,7 +6,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
 # Load the dataset
-df = pd.read_csv("./Data/TripAdvisor_RestauarantRecommendation1.csv")
+df = pd.read_csv("./data/raw/TripAdvisor_RestauarantRecommendation1.csv")
 
 # Combine 'Street Address' and 'Location' into one 'Location' column and clean the data
 df["Location"] = df["Street Address"] + ', ' + df["Location"]
