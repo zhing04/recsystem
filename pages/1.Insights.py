@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 # Set page layout and sidebar
 st.set_page_config(layout='wide', initial_sidebar_state='expanded')
-st.sidebar.image('Data/App_icon.png')
+st.sidebar.image('data/App_icon.png')
 
 # Main page title
 st.markdown("""
