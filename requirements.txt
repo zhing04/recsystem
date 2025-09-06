@@ -1,0 +1,16 @@
+bokeh>=2.4.3
+seaborn>=0.11.2
+scikit-learn>=1.1.1
+
+
+matplotlib
+pandas
+scikit_learn
+seaborn
+streamlit
+
+googlemaps
+numpy
+streamlit-folium
+folium
+openpyxl
