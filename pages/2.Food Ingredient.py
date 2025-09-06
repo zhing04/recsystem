@@ -33,7 +33,7 @@ st.set_page_config(
 )
 
 # Sidebar
-st.sidebar.image('Data/App_icon.png')
+st.sidebar.image('data/App_icon.png')
 
 
 # Display the front end aspect
