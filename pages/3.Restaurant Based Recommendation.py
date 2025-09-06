@@ -47,7 +47,7 @@ Begin exploring the diverse culinary landscape and uncover hidden gastronomic tr
 ↓
 """)
 
-image = Image.open('Data/food_cover.jpg')
+image = Image.open('data/food_cover.jpg')
 st.image(image, use_column_width=True)
 
 st.markdown("### Select Restaurant")
@@ -99,13 +99,13 @@ def recom(dataframe, name):
 
         # Display reviews as images
         if reviews == '4.5 of 5 bubbles':
-            image = Image.open('Data/Ratings/Img4.5.png')
+            image = Image.open('data/Ratings/Img4.5.png')
             st.image(image, use_column_width=True)
         elif reviews == '4 of 5 bubbles':
-            image = Image.open('Data/Ratings/Img4.0.png')
+            image = Image.open('data/Ratings/Img4.0.png')
             st.image(image, use_column_width=True)
         elif reviews == '5 of 5 bubbles':
-            image = Image.open('Data/Ratings/Img5.0.png')
+            image = Image.open('data/Ratings/Img5.0.png')
             st.image(image, use_column_width=True)
         else:
             pass
@@ -136,7 +136,7 @@ def recom(dataframe, name):
             st.info('Phone: ' + contact_no)
 
     st.text("")
-    image = Image.open('Data/food_2.jpg')
+    image = Image.open('data/food_2.jpg')
     st.image(image, use_column_width=True)
 
 # Call the recommendation function
