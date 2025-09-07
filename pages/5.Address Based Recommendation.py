@@ -5,6 +5,10 @@ import numpy as np
 from streamlit_folium import st_folium
 import folium
 
+# Set page layout and sidebar
+st.set_page_config(layout='wide', initial_sidebar_state='expanded')
+st.sidebar.image('data/App_icon.png')
+
 # Initialize the Google Maps client with your API key
 API_KEY = 'AIzaSyDK7boLSVOjAK2lPx6NoOrBYPaXLpCAUoA'
 gmaps = googlemaps.Client(key=API_KEY)
@@ -185,4 +189,5 @@ if user_input:
                 st.error("Could not fetch coordinates for the selected location.")
     else:
         st.error("No suggestions found.")
+
 
