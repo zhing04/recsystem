@@ -88,7 +88,7 @@ st.markdown(
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_excel('data/final_sentiment_df.xlsx')  # Assuming the data file is named 'final_sentiment_df.xlsx'
+        df = pd.read_excel('data/raw/final_sentiment_df.xlsx')  # Assuming the data file is named 'final_sentiment_df.xlsx'
         return df
     except Exception as e:
         st.error(f"Error loading data: {e}")
@@ -177,5 +177,6 @@ def recommend_restaurants(aspects, top_n):
 # Add a button to trigger the recommendation
 if st.button('Recommend'):
     recommend_restaurants(selected_aspects, top_n)
+
 
 
