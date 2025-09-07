@@ -58,7 +58,8 @@ st.markdown("""
 
 <p style='text-align: justify;'>Discover hidden gems, indulge in mouthwatering dishes, and immerse yourself in the vibrant food culture of your chosen destination. From cozy cafes to upscale fine dining establishments, there's something for every palate and occasion.</p>
 """, unsafe_allow_html=True)
-
+# banner image
+st.image(COVER_IMG, use_container_width=True)
 
 # ---------- helpers ----------
 def _stars_from_bubbles(text: str) -> str:
