@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import re
 
 import pandas as pd
 import streamlit as st
@@ -13,15 +14,15 @@ from sklearn.metrics.pairwise import linear_kernel
 st.set_page_config(layout="centered", initial_sidebar_state="expanded")
 
 DATA_TRIP = "data/raw/TripAdvisor_RestauarantRecommendation1.csv"
-ICON_PATH = "data/App_icon.png"
+ICON_PATH = "data/App_icon.png"             # <- keep logo in the SIDEBAR (same as your other pages)
 COVER_IMG = "data/food_cover.jpg"
 FOOTER_IMG = "data/food_2.jpg"
 RATINGS_IMG = {
     "4.5 of 5 bubbles": "data/Ratings/Img4.5.png",
-    "4 of 5 bubbles": "data/Ratings/Img4.0.png",
-    "5 of 5 bubbles": "data/Ratings/Img5.0.png",
+    "4 of 5 bubbles":   "data/Ratings/Img4.0.png",
+    "5 of 5 bubbles":   "data/Ratings/Img5.0.png",
 }
-FEEDBACK_FILE = "data/raw/feedback.csv"  # <- single source of truth
+FEEDBACK_FILE = "data/raw/feedback.csv"     # CSV columns: Reviews, Comments
 
 # Ensure feedback CSV exists with correct columns
 Path(FEEDBACK_FILE).parent.mkdir(parents=True, exist_ok=True)
@@ -29,20 +30,59 @@ if not os.path.isfile(FEEDBACK_FILE):
     pd.DataFrame(columns=["Reviews", "Comments"]).to_csv(FEEDBACK_FILE, index=False)
 
 # =========================
-# Small helpers
+# Helpers
 # =========================
-def safe_image(path: str, **kwargs):
-    """Show image if it exists; otherwise show a tiny caption (prevents crashes)."""
+def safe_image_to(place, path: str, **kwargs):
+    """Render image to 'place' (st or st.sidebar) only if file exists."""
     p = Path(path)
     if p.exists():
-        st.image(str(p), **kwargs)
+        place.image(str(p), **kwargs)
     else:
-        st.caption(f"⚠️ Image not found: {p}")
+        place.caption(f"⚠️ Image not found: {p}")
+
+def stars_from_bubbles(text: str) -> str:
+    """
+    Convert '4 of 5 bubbles' -> '⭐⭐⭐⭐☆'
+    """
+    m = re.search(r"(\d(?:\.\d)?)\s*of\s*5", str(text))
+    if not m:
+        return "☆☆☆☆☆"
+    val = m.group(1)
+    try:
+        score = float(val)
+    except:
+        return "☆☆☆☆☆"
+    full = int(score)  # show integer stars (consistent with bubbles)
+    full = max(0, min(full, 5))
+    return "⭐" * full + "☆" * (5 - full)
+
+def render_feedback_cards(df: pd.DataFrame, max_rows: int = 10):
+    """
+    Nicely styled feedback list (cards) that fits Streamlit theme.
+    Uses only Reviews (bubbles text) & Comments (your schema).
+    """
+    if df.empty:
+        st.caption("No feedback yet.")
+        return
+
+    show = df.tail(max_rows)
+    for _, row in show.iterrows():
+        stars = stars_from_bubbles(row.get("Reviews", ""))
+        comment = str(row.get("Comments", "")).strip()
+        with st.container(border=True):
+            st.markdown(
+                f"<div style='font-size:1.1rem; line-height:1.3'>{stars}</div>",
+                unsafe_allow_html=True,
+            )
+            if comment:
+                st.write(comment)
+            else:
+                st.caption("— (no comment) —")
 
 # =========================
-# Sidebar icon
+# Sidebar icon (KEEP POSITION)
 # =========================
-safe_image(ICON_PATH, use_container_width=True)
+safe_image_to(st.sidebar, ICON_PATH, use_container_width=True)
 
 # =========================
 # Load & prep dataset
@@ -53,8 +93,7 @@ def load_data(path: str) -> pd.DataFrame:
     # Combine 'Street Address' + 'Location'
     if "Street Address" in df_.columns and "Location" in df_.columns:
         df_["Location"] = df_["Street Address"].fillna("").astype(str) + ", " + df_["Location"].fillna("").astype(str)
-        if "Street Address" in df_.columns:
-            df_ = df_.drop(["Street Address"], axis=1)
+        df_ = df_.drop(columns=[c for c in ["Street Address"] if c in df_.columns], errors="ignore")
     # clean
     if "Type" in df_.columns:
         df_ = df_[df_["Type"].notna()]
@@ -67,6 +106,7 @@ df = load_data(DATA_TRIP)
 # Header
 # =========================
 st.markdown("<h1 style='text-align: center;'>Recommended</h1>", unsafe_allow_html=True)
+
 st.markdown(
     """
 ### Welcome to Restaurant Recommender!
@@ -80,7 +120,7 @@ Looking for the perfect place to dine? Look no further! Our Restaurant Recommend
 4. **Enjoy Your Meal!**
 """
 )
-safe_image(COVER_IMG, use_container_width=True)
+safe_image_to(st, COVER_IMG, use_container_width=True)
 
 # =========================
 # Select anchor restaurant
@@ -92,17 +132,17 @@ name = st.selectbox("Select the Restaurant you like", sorted(df["Name"].dropna()
 # Recommender
 # =========================
 def recom(dataframe: pd.DataFrame, anchor_name: str):
-    # Keep necessary columns; ignore if missing
+    # Drop unused columns if present
     for col in ["Trip_advisor Url", "Menu"]:
         if col in dataframe.columns:
             dataframe = dataframe.drop([col], axis=1)
 
-    # Filter: need non-empty comments (if column exists)
+    # Filter where Comments are valid (if column exists)
     if "Comments" in dataframe.columns:
         mask = dataframe["Comments"].notna() & (dataframe["Comments"] != "No Comments")
         dataframe = dataframe[mask] if mask.any() else dataframe
 
-    # Build TF-IDF on 'Type' (fallback to empty string)
+    # TF-IDF on 'Type'
     types = dataframe["Type"].fillna("").astype(str)
     tfidf = TfidfVectorizer(stop_words="english")
     tfidf_matrix = tfidf.fit_transform(types)
@@ -111,10 +151,10 @@ def recom(dataframe: pd.DataFrame, anchor_name: str):
     # Map name -> index
     indices = pd.Series(dataframe.index, index=dataframe["Name"]).drop_duplicates()
 
-    # Get index of selected
     if anchor_name not in indices:
         st.warning("Selected restaurant not found in the filtered dataset.")
         return
+
     idx = indices[anchor_name]
     if isinstance(idx, pd.Series):
         idx = idx.iloc[0]
@@ -148,7 +188,7 @@ def recom(dataframe: pd.DataFrame, anchor_name: str):
             reviews_text = details["Reviews"]
             img_path = RATINGS_IMG.get(reviews_text, None)
             if img_path:
-                safe_image(img_path, use_container_width=True)
+                safe_image_to(st, img_path, use_container_width=True)
 
         # Comments
         if "Comments" in dataframe.columns:
@@ -173,13 +213,13 @@ def recom(dataframe: pd.DataFrame, anchor_name: str):
             st.info("Phone: " + str(details["Contact Number"]))
 
     st.text("")
-    safe_image(FOOTER_IMG, use_container_width=True)
+    safe_image_to(st, FOOTER_IMG, use_container_width=True)
 
 # Run recommender
 recom(df, name)
 
 # =========================
-# Feedback section (CSV: Reviews, Comments)
+# Feedback (keeps your CSV schema: Reviews, Comments)
 # =========================
 st.markdown("## Rate Your Experience")
 rating = st.slider("Rate this restaurant (1-5)", 1, 5, 3)
@@ -191,17 +231,21 @@ if st.button("Submit Feedback"):
         new_row = pd.DataFrame([[f"{rating} of 5 bubbles", feedback_comment]], columns=["Reviews", "Comments"])
         new_row.to_csv(FEEDBACK_FILE, mode="a", header=False, index=False)
         st.success("✅ Thanks for your feedback!")
-        # Optional: refresh to show immediately
-        # st.rerun()
+        # Show immediately
+        try:
+            df_tmp = pd.read_csv(FEEDBACK_FILE)
+            st.subheader("Recent Feedback")
+            render_feedback_cards(df_tmp, max_rows=10)
+        except Exception as e:
+            st.caption(f"⚠️ Could not load feedback file: {e}")
     else:
         st.warning("Please enter a comment before submitting.")
 
-# Show recent feedback safely
+# Always show the latest feedback list (nice cards)
 try:
     feedback_df = pd.read_csv(FEEDBACK_FILE)
     if not feedback_df.empty:
         st.subheader("Recent Feedback")
-        st.dataframe(feedback_df.tail(10), use_container_width=True)
+        render_feedback_cards(feedback_df, max_rows=10)
 except Exception as e:
     st.caption(f"⚠️ Could not load feedback file: {e}")
-
