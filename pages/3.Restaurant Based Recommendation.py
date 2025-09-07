@@ -76,7 +76,7 @@ df = df[df['Type'].notna()]
 df = df.drop_duplicates(subset='Name').reset_index(drop=True)
 
 # ---------- header & intro (original copy) ----------
-st.markdown("<h1 style='text-align: center;'>Restaurant Based</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>Restaurant Based Recommendation</h1>", unsafe_allow_html=True)
 
 st.markdown("""
 ### Welcome to Restaurant Recommender!
