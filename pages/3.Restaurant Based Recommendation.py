@@ -12,7 +12,7 @@ from sklearn.metrics.pairwise import linear_kernel
 # ---------- paths (match your repo layout) ----------
 DATA_TRIP = "data/raw/TripAdvisor_RestauarantRecommendation1.csv"
 APP_ICON = "data/App_icon.png"
-COVER_IMG = "data/food_cover.jpg"
+COVER_IMG = "data/restaurant.jpg"
 FOOTER_IMG = "data/food_2.jpg"
 RATING_IMG_45 = "data/Ratings/Img4.5.png"
 RATING_IMG_40 = "data/Ratings/Img4.0.png"
