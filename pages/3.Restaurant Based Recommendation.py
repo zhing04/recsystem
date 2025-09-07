@@ -5,6 +5,14 @@ from PIL import Image
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
+# --- Feedback CSV setup (add near the top) ---
+FEEDBACK_FILE = "data/raw/feedback.csv"
+
+# Create the CSV with the correct headers if it doesn't exist
+if not os.path.isfile(FEEDBACK_FILE):
+    pd.DataFrame(columns=["Reviews", "Comments"]).to_csv(FEEDBACK_FILE, index=False)
+# ---------------------------------------------
+
 # Load the dataset
 df = pd.read_csv("./data/raw/TripAdvisor_RestauarantRecommendation1.csv")
 
@@ -142,14 +150,32 @@ def recom(dataframe, name):
 # Call the recommendation function
 recom(df, name)
 
-# Collect User Feedback
 st.markdown("## Rate Your Experience")
 rating = st.slider('Rate this restaurant (1-5)', 1, 5)
 feedback_comment = st.text_area('Your Feedback')
 
 if st.button('Submit Feedback'):
-    # Save the feedback to a CSV file
-    feedback_file = './data/raw/feedback.csv'
+    if feedback_comment.strip():
+        new_feedback = pd.DataFrame(
+            [[f"{rating} of 5 bubbles", feedback_comment]],
+            columns=["Reviews", "Comments"]
+        )
+        # append without header
+        new_feedback.to_csv(FEEDBACK_FILE, mode="a", header=False, index=False)
+        st.success("✅ Thanks for your feedback!")
+        # Optional: refresh so the new row shows immediately
+        # st.rerun()
+    else:
+        st.warning("Please enter a comment before submitting.")
+
+# Show recent feedback
+try:
+    feedback_df = pd.read_csv(FEEDBACK_FILE)
+    if not feedback_df.empty:
+        st.subheader("Recent Feedback")
+        st.dataframe(feedback_df.tail(10), use_container_width=True)
+except Exception as e:
+    st.caption(f"⚠️ Could not load feedback file: {e}")
     
     # Create the CSV file if it doesn't exist
     if not os.path.isfile(feedback_file):
@@ -170,8 +196,4 @@ if st.button('Submit Feedback'):
     
     st.success('Thanks for your feedback!')
 
-# Show recent feedback
-feedback_df = pd.read_csv(feedback_file)
-if not feedback_df.empty:
-    st.subheader("Recent Feedback")
-    st.dataframe(feedback_df.tail(10), use_container_width=True)
+   st.image(..., use_container_width=True)
