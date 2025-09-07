@@ -32,7 +32,7 @@ def _stars_from_bubbles(text: str) -> str:
     return "⭐" * full + "☆" * (5 - full)
 
 def render_feedback_grid(max_rows: int = 10):
-    """Compact two-column feedback (no delete)."""
+    """Compact two-column feedback with consistent padding & clear text color."""
     try:
         df = pd.read_csv(FEEDBACK_FILE)
     except Exception as e:
@@ -41,15 +41,24 @@ def render_feedback_grid(max_rows: int = 10):
     if df.empty:
         st.caption("No feedback yet.")
         return
+
     last = df.tail(max_rows).reset_index(drop=True)
     cols = st.columns(2)
+
     for i, row in last.iterrows():
         col = cols[i % 2]
-        with col.container(border=True):
-            stars = _stars_from_bubbles(row.get("Reviews", ""))
-            comment = str(row.get("Comments", "")).strip() or "— (no comment) —"
-            col.markdown(f"<div style='font-size:1.05rem'>{stars}</div>", unsafe_allow_html=True)
-            col.write(comment)
+        stars = _stars_from_bubbles(row.get("Reviews", ""))
+        raw_comment = str(row.get("Comments", "")).strip() or "— (no comment) —"
+        safe_comment = html.escape(raw_comment)
+        col.markdown(
+            f"""
+            <div class="feedback-card">
+              <div class="feedback-stars">{stars}</div>
+              <div class="feedback-text">{safe_comment}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 # ---------- Streamlit config ----------
 st.set_page_config(layout='centered', initial_sidebar_state='expanded')
