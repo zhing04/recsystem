@@ -54,13 +54,13 @@ def details(dataframe):
         # REVIEWS
         if Reviews == '4.5':
             image = Image.open('data/Ratings/Img4.5.png')
-            st.image(image, use_column_width=True)
+            st.image(image, use_container_width=True)
         elif Reviews == '4':
             image = Image.open('data/Ratings/Img4.0.png')
-            st.image(image, use_column_width=True)
+            st.image(image, use_container_width=True)
         elif Reviews == '5':
             image = Image.open('data/Ratings/Img5.0.png')
-            st.image(image, use_column_width=True)
+            st.image(image, use_container_width=True)
         else:
             pass
 
@@ -89,7 +89,7 @@ def details(dataframe):
 
     st.text("")
     image = Image.open('data/food_2.jpg')
-    st.image(image, use_column_width=True)
+    st.image(image, use_container_width=True)
 
 # Call the details function based on the selected state
 if option == 'New Jersey':
