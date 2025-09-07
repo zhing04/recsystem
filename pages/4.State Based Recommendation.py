@@ -1,97 +1,132 @@
+import os
+from pathlib import Path
+import re
+
 import pandas as pd
 import streamlit as st
-import os
-from bokeh.models.widgets import Div
 from PIL import Image
 
+# -----------------------------
+# Config & constants
+# -----------------------------
 st.set_page_config(layout='centered', initial_sidebar_state='expanded')
-st.sidebar.image('data/App_icon.png')
+ICON_PATH = 'data/App_icon.png'     # keep logo in sidebar
+FOOTER_IMG = 'data/food_2.jpg'
+RATING_MAP = {
+    '4.5': 'data/Ratings/Img4.5.png',
+    '4':   'data/Ratings/Img4.0.png',
+    '5':   'data/Ratings/Img5.0.png',
+}
+FEEDBACK_FILE = "data/raw/feedback.csv"  # unified feedback CSV
+
+# ensure feedback CSV exists (Reviews, Comments)
+Path(FEEDBACK_FILE).parent.mkdir(parents=True, exist_ok=True)
+if not os.path.isfile(FEEDBACK_FILE):
+    pd.DataFrame(columns=["Reviews", "Comments"]).to_csv(FEEDBACK_FILE, index=False)
+
+# helpers
+def safe_image(place, path: str):
+    p = Path(path)
+    if p.exists():
+        place.image(str(p), use_container_width=True)
+    else:
+        place.caption(f"⚠️ Image not found: {p}")
+
+def stars_from_bubbles_text(text: str) -> str:
+    m = re.search(r"(\d(?:\.\d)?)", str(text))
+    if not m:
+        return "☆☆☆☆☆"
+    try:
+        score = float(m.group(1))
+    except:
+        score = 0
+    full = max(0, min(int(score), 5))
+    return "⭐" * full + "☆" * (5 - full)
+
+def render_feedback_cards(df: pd.DataFrame, max_rows: int = 10):
+    if df.empty:
+        st.caption("No feedback yet.")
+        return
+    for _, row in df.tail(max_rows).iterrows():
+        stars = stars_from_bubbles_text(row.get("Reviews", ""))
+        comment = str(row.get("Comments", "")).strip()
+        with st.container(border=True):
+            st.markdown(f"<div style='font-size:1.1rem'>{stars}</div>", unsafe_allow_html=True)
+            st.write(comment or "— (no comment) —")
+
+# sidebar logo (keep position)
+safe_image(st.sidebar, ICON_PATH)
+
 st.markdown("<h1 style='text-align: center;'>Restaurants</h1>", unsafe_allow_html=True)
-
 st.markdown("""
-<p style='text-align: justify;'>Embark on a gastronomic journey with our curated selection of restaurants across various states. Whether you're craving the bold flavors of Texas barbecue, the diverse cuisine of California, or the iconic dishes of New York, we've got you covered. Our app is your passport to culinary exploration, delivering personalized recommendations based on real user reviews and ratings.</p>
-
-<p style='text-align: justify;'>Discover hidden gems, indulge in mouthwatering dishes, and immerse yourself in the vibrant food culture of your chosen destination. From cozy cafes to upscale fine dining establishments, there's something for every palate and occasion.</p>
+<p style='text-align: justify;'>Embark on a gastronomic journey with our curated selection of restaurants across various states...</p>
 """, unsafe_allow_html=True)
 
-# Load data
-California = pd.read_csv('./data/California/California.csv', sep=',')
-California["Location"] = California["Street Address"] +', '+ California["Location"]
-California = California.drop(['Street Address',], axis=1)
+# -----------------------------
+# Load per-state data
+# -----------------------------
+def load_and_clean(path: str) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    if "Street Address" in df.columns and "Location" in df.columns:
+        df["Location"] = df["Street Address"].fillna("").astype(str) + ", " + df["Location"].fillna("").astype(str)
+        df = df.drop(columns=["Street Address"])
+    return df
 
-New_York = pd.read_csv('data/New York/New_York.csv', sep=',')
-New_York["Location"] = New_York["Street Address"] +', '+ New_York["Location"]
-New_York = New_York.drop(['Street Address', ], axis=1)
+California  = load_and_clean('data/California/California.csv')
+New_York    = load_and_clean('data/New York/New_York.csv')
+New_Jersey  = load_and_clean('data/New Jersey/New_Jersey.csv')
+Texas       = load_and_clean('data/Texas/Texas.csv')
+Washington  = load_and_clean('data/Washington/Washington.csv')
 
-New_Jersey = pd.read_csv('data/New Jersey/New_Jersey.csv', sep=',')
-New_Jersey["Location"] = New_Jersey["Street Address"] +', '+ New_Jersey["Location"]
-New_Jersey  = New_Jersey.drop(['Street Address', ], axis=1)
-
-Texas = pd.read_csv('data/Texas/Texas.csv', sep=',')
-Texas["Location"] = Texas["Street Address"] +', '+ Texas["Location"]
-Texas = Texas.drop(['Street Address', ],axis=1)
-
-Washington = pd.read_csv('data/Washington/Washington.csv', sep=',')
-Washington["Location"] = Washington["Street Address"] +', '+ Washington["Location"]
-Washington = Washington.drop(['Street Address', ], axis=1)
-
-# Select state
+# -----------------------------
+# UI - choose state
+# -----------------------------
 option = st.selectbox('Select Your State', ('New York', 'New Jersey', 'California', 'Texas', 'Washington'))
 
-# Details of every restaurant
-def details(dataframe):
-    # Filter for unique restaurant names and limit to top 20
+# -----------------------------
+# Restaurant details renderer
+# -----------------------------
+def details(dataframe: pd.DataFrame):
     unique_restaurants = dataframe['Name'].drop_duplicates().head(20)
-    
-    # Use the unique restaurant names in the selectbox
     title = st.selectbox('Select Your Restaurant (Top 20)', unique_restaurants)
 
-    # Check if the selected restaurant exists in the dataframe
     if title in dataframe['Name'].values:
-        Reviews = dataframe.at[dataframe['Name'].eq(title).idxmax(), 'Reviews']
+        idx = dataframe['Name'].eq(title).idxmax()
+
+        # Rating image (state files store Reviews as '4.5', '4', '5')
+        Reviews = str(dataframe.at[idx, 'Reviews'])
         st.subheader("Restaurant Rating:-")
+        img_path = RATING_MAP.get(Reviews)
+        if img_path:
+            safe_image(st, img_path)
 
-        # REVIEWS
-        if Reviews == '4.5':
-            image = Image.open('data/Ratings/Img4.5.png')
-            st.image(image, use_container_width=True)
-        elif Reviews == '4':
-            image = Image.open('data/Ratings/Img4.0.png')
-            st.image(image, use_container_width=True)
-        elif Reviews == '5':
-            image = Image.open('data/Ratings/Img5.0.png')
-            st.image(image, use_container_width=True)
-        else:
-            pass
-
-        # Comments section
+        # Comments
         if 'Comments' in dataframe.columns:
-            comment = dataframe.at[dataframe['Name'].eq(title).idxmax(), 'Comments']
-            if comment != "No Comments":
+            comment = dataframe.at[idx, 'Comments']
+            if pd.notna(comment) and comment != "No Comments":
                 st.subheader("Comments:-")
-                st.warning(comment)
+                st.warning(str(comment))
 
-        # Type of restaurant
-        Type = dataframe.at[dataframe['Name'].eq(title).idxmax(), 'Type']
+        # Type
+        Type = dataframe.at[idx, 'Type']
         st.subheader("Restaurant Category:-")
-        st.error(Type)
+        st.error(str(Type))
 
-        # Location
-        Location = dataframe.at[dataframe['Name'].eq(title).idxmax(), 'Location']
+        # Address
+        Location = dataframe.at[idx, 'Location']
         st.subheader("The Address:-")
-        st.success(Location)
+        st.success(str(Location))
 
-        # Contact details
-        contact_no = dataframe.at[dataframe['Name'].eq(title).idxmax(), 'Contact Number']
-        if contact_no != "Not Available":
+        # Contact
+        contact_no = dataframe.at[idx, 'Contact Number']
+        if str(contact_no) != "Not Available":
             st.subheader("Contact Details:-")
-            st.info('Phone:- ' + contact_no)
+            st.info('Phone:- ' + str(contact_no))
 
     st.text("")
-    image = Image.open('data/food_2.jpg')
-    st.image(image, use_container_width=True)
+    safe_image(st, FOOTER_IMG)
 
-# Call the details function based on the selected state
+# choose dataset
 if option == 'New Jersey':
     details(New_Jersey)
 elif option == 'New York':
@@ -103,28 +138,27 @@ elif option == 'Texas':
 elif option == 'Washington':
     details(Washington)
 
-# Collect User Feedback
+# -----------------------------
+# Unified feedback (same CSV)
+# -----------------------------
 st.markdown("## Rate Your Experience")
 rating = st.slider('Rate this restaurant (1-5)', 1, 5)
 feedback_comment = st.text_area('Your Feedback')
 
 if st.button('Submit Feedback'):
-    # Save the feedback to a CSV file
-    feedback_file = 'data/feedback.csv'
-    
-    # Create the CSV file if it doesn't exist
-    if not os.path.isfile(feedback_file):
-        feedback_df = pd.DataFrame(columns=['Reviews', 'Comments'])
-        feedback_df.to_csv(feedback_file, index=False)
-    
-    # Load existing feedback data
-    feedback_df = pd.read_csv(feedback_file)
+    if feedback_comment.strip():
+        new_feedback = pd.DataFrame([[f'{rating} of 5 bubbles', feedback_comment]],
+                                    columns=['Reviews', 'Comments'])
+        new_feedback.to_csv(FEEDBACK_FILE, mode='a', header=False, index=False)
+        st.success('✅ Thanks for your feedback!')
+    else:
+        st.warning("Please enter a comment before submitting.")
 
-    # Append new feedback
-    new_feedback = pd.DataFrame([{'Reviews': f'{rating} of 5 bubbles', 'Comments': feedback_comment}])
-    feedback_df = pd.concat([feedback_df, new_feedback], ignore_index=True)
-    feedback_df.to_csv(feedback_file, index=False)
-    
-    # Clear the fields after submission
-    st.success('Thanks for your feedback!')
-
+# Recent feedback (last 10) as themed cards
+try:
+    feedback_df = pd.read_csv(FEEDBACK_FILE)
+    if not feedback_df.empty:
+        st.subheader("Recent Feedback")
+        render_feedback_cards(feedback_df, max_rows=10)
+except Exception as e:
+    st.caption(f"⚠️ Could not load feedback: {e}")
