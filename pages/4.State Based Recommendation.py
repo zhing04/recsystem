@@ -1,39 +1,25 @@
-import os
-from pathlib import Path
-import re
-
 import pandas as pd
 import streamlit as st
+import os
+from pathlib import Path
 from PIL import Image
+import re
 
-# -----------------------------
-# Config & constants
-# -----------------------------
-st.set_page_config(layout='centered', initial_sidebar_state='expanded')
-
-ICON_PATH = 'data/App_icon.png'
+# ---------- paths (match your repo layout) ----------
+APP_ICON = 'data/App_icon.png'
 FOOTER_IMG = 'data/food_2.jpg'
-RATING_MAP = {
-    '4.5': 'data/Ratings/Img4.5.png',
-    '4':   'data/Ratings/Img4.0.png',
-    '5':   'data/Ratings/Img5.0.png',
-}
+RATING_IMG_45 = 'data/Ratings/Img4.5.png'
+RATING_IMG_40 = 'data/Ratings/Img4.0.png'
+RATING_IMG_50 = 'data/Ratings/Img5.0.png'
 FEEDBACK_FILE = "data/raw/feedback.csv"
 
-# Ensure feedback CSV exists
+# Ensure feedback CSV exists with correct columns
 Path(FEEDBACK_FILE).parent.mkdir(parents=True, exist_ok=True)
 if not os.path.isfile(FEEDBACK_FILE):
-    pd.DataFrame(columns=["Reviews", "Comments"]).to_csv(FEEDBACK_FILE, index=False)
+    pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
 
-# -----------------------------
-# Helpers
-# -----------------------------
-def safe_image(place, path: str):
-    p = Path(path)
-    if p.exists():
-        place.image(str(p), use_container_width=True)
-
-def stars_from_bubbles(text: str) -> str:
+# ---------- small helpers ----------
+def _stars_from_bubbles(text: str) -> str:
     m = re.search(r"(\d(?:\.\d)?)", str(text))
     if not m:
         return "☆☆☆☆☆"
@@ -44,66 +30,63 @@ def stars_from_bubbles(text: str) -> str:
     full = max(0, min(int(score), 5))
     return "⭐" * full + "☆" * (5 - full)
 
-def render_feedback_grid_with_delete(max_rows: int = 10):
+def render_feedback_grid(max_rows: int = 10):
+    """Compact two-column feedback (no delete)."""
     try:
         df = pd.read_csv(FEEDBACK_FILE)
     except Exception as e:
         st.caption(f"⚠️ Could not load feedback: {e}")
         return
-
     if df.empty:
         st.caption("No feedback yet.")
         return
-
-    last = df.tail(max_rows)
+    last = df.tail(max_rows).reset_index(drop=True)
     cols = st.columns(2)
-    to_delete = set()
-
-    for i, (abs_idx, row) in enumerate(last.iterrows()):
+    for i, row in last.iterrows():
         col = cols[i % 2]
         with col.container(border=True):
-            stars = stars_from_bubbles(row.get("Reviews", ""))
+            stars = _stars_from_bubbles(row.get("Reviews", ""))
             comment = str(row.get("Comments", "")).strip() or "— (no comment) —"
-            st.markdown(f"<div style='font-size:1.05rem'>{stars}</div>", unsafe_allow_html=True)
-            st.write(comment)
-            if st.checkbox("Delete", key=f"del_state_{abs_idx}"):
-                to_delete.add(abs_idx)
+            col.markdown(f"<div style='font-size:1.05rem'>{stars}</div>", unsafe_allow_html=True)
+            col.write(comment)
 
-    if to_delete and st.button(f"Delete {len(to_delete)} selected", type="primary"):
-        df = df.drop(index=list(to_delete))
-        df.to_csv(FEEDBACK_FILE, index=False)
-        st.success("Deleted. Refreshing…")
-        st.rerun()
-
-# -----------------------------
-# Sidebar logo
-# -----------------------------
-safe_image(st.sidebar, ICON_PATH)
-
+# ---------- Streamlit config ----------
+st.set_page_config(layout='centered', initial_sidebar_state='expanded')
+st.sidebar.image(APP_ICON, use_container_width=True)
 st.markdown("<h1 style='text-align: center;'>Restaurants</h1>", unsafe_allow_html=True)
 
-# -----------------------------
-# Load per-state data
-# -----------------------------
-def load_and_clean(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    if "Street Address" in df.columns and "Location" in df.columns:
-        df["Location"] = df["Street Address"].fillna("").astype(str) + ", " + df["Location"].fillna("").astype(str)
-        df = df.drop(columns=["Street Address"])
-    return df
+st.markdown("""
+<p style='text-align: justify;'>Embark on a gastronomic journey with our curated selection of restaurants across various states. Whether you're craving the bold flavors of Texas barbecue, the diverse cuisine of California, or the iconic dishes of New York, we've got you covered. Our app is your passport to culinary exploration, delivering personalized recommendations based on real user reviews and ratings.</p>
 
-California  = load_and_clean('data/California/California.csv')
-New_York    = load_and_clean('data/New York/New_York.csv')
-New_Jersey  = load_and_clean('data/New Jersey/New_Jersey.csv')
-Texas       = load_and_clean('data/Texas/Texas.csv')
-Washington  = load_and_clean('data/Washington/Washington.csv')
+<p style='text-align: justify;'>Discover hidden gems, indulge in mouthwatering dishes, and immerse yourself in the vibrant food culture of your chosen destination. From cozy cafes to upscale fine dining establishments, there's something for every palate and occasion.</p>
+""", unsafe_allow_html=True)
 
-# -----------------------------
-# UI
-# -----------------------------
+# ---------- load per-state data (paths adjusted to your repo) ----------
+California = pd.read_csv('data/California/California.csv', sep=',')
+California["Location"] = California["Street Address"] + ', ' + California["Location"]
+California = California.drop(['Street Address'], axis=1)
+
+New_York = pd.read_csv('data/New York/New_York.csv', sep=',')
+New_York["Location"] = New_York["Street Address"] + ', ' + New_York["Location"]
+New_York = New_York.drop(['Street Address'], axis=1)
+
+New_Jersey = pd.read_csv('data/New Jersey/New_Jersey.csv', sep=',')
+New_Jersey["Location"] = New_Jersey["Street Address"] + ', ' + New_Jersey["Location"]
+New_Jersey = New_Jersey.drop(['Street Address'], axis=1)
+
+Texas = pd.read_csv('data/Texas/Texas.csv', sep=',')
+Texas["Location"] = Texas["Street Address"] + ', ' + Texas["Location"]
+Texas = Texas.drop(['Street Address'], axis=1)
+
+Washington = pd.read_csv('data/Washington/Washington.csv', sep=',')
+Washington["Location"] = Washington["Street Address"] + ', ' + Washington["Location"]
+Washington = Washington.drop(['Street Address'], axis=1)
+
+# ---------- pick state ----------
 option = st.selectbox('Select Your State', ('New York', 'New Jersey', 'California', 'Texas', 'Washington'))
 
-def details(dataframe: pd.DataFrame):
+# ---------- details renderer (original logic, minor cleanup) ----------
+def details(dataframe):
     unique_restaurants = dataframe['Name'].drop_duplicates().head(20)
     title = st.selectbox('Select Your Restaurant (Top 20)', unique_restaurants)
 
@@ -112,13 +95,17 @@ def details(dataframe: pd.DataFrame):
 
         Reviews = str(dataframe.at[idx, 'Reviews'])
         st.subheader("Restaurant Rating:-")
-        img_path = RATING_MAP.get(Reviews)
-        if img_path:
-            safe_image(st, img_path)
+
+        if Reviews == '4.5':
+            st.image(Image.open(RATING_IMG_45), use_container_width=True)
+        elif Reviews == '4':
+            st.image(Image.open(RATING_IMG_40), use_container_width=True)
+        elif Reviews == '5':
+            st.image(Image.open(RATING_IMG_50), use_container_width=True)
 
         if 'Comments' in dataframe.columns:
             comment = dataframe.at[idx, 'Comments']
-            if pd.notna(comment) and comment != "No Comments":
+            if comment != "No Comments":
                 st.subheader("Comments:-")
                 st.warning(str(comment))
 
@@ -136,8 +123,9 @@ def details(dataframe: pd.DataFrame):
             st.info('Phone:- ' + str(contact_no))
 
     st.text("")
-    safe_image(st, FOOTER_IMG)
+    st.image(Image.open(FOOTER_IMG), use_container_width=True)
 
+# ---------- route by state ----------
 if option == 'New Jersey':
     details(New_Jersey)
 elif option == 'New York':
@@ -149,21 +137,22 @@ elif option == 'Texas':
 elif option == 'Washington':
     details(Washington)
 
-# -----------------------------
-# Feedback
-# -----------------------------
+# ---------- feedback (same behavior as original, path updated) ----------
 st.markdown("## Rate Your Experience")
 rating = st.slider('Rate this restaurant (1-5)', 1, 5)
 feedback_comment = st.text_area('Your Feedback')
 
 if st.button('Submit Feedback'):
-    if feedback_comment.strip():
-        new_feedback = pd.DataFrame([[f'{rating} of 5 bubbles', feedback_comment]],
-                                    columns=['Reviews', 'Comments'])
-        new_feedback.to_csv(FEEDBACK_FILE, mode='a', header=False, index=False)
-        st.success('✅ Thanks for your feedback!')
-    else:
-        st.warning("Please enter a comment before submitting.")
+    if not os.path.isfile(FEEDBACK_FILE):
+        pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
 
+    feedback_df = pd.read_csv(FEEDBACK_FILE)
+    new_feedback = pd.DataFrame([{'Reviews': f'{rating} of 5 bubbles', 'Comments': feedback_comment}])
+    feedback_df = pd.concat([feedback_df, new_feedback], ignore_index=True)
+    feedback_df.to_csv(FEEDBACK_FILE, index=False)
+
+    st.success('Thanks for your feedback!')
+
+# ---------- last 10 feedback (compact 2-column) ----------
 st.subheader("Recent Feedback")
-render_feedback_grid_with_delete(max_rows=10)
+render_feedback_grid(max_rows=10)
