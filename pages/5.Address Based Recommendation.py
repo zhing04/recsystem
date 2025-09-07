@@ -44,7 +44,7 @@ def find_nearby_restaurants(lat, lng, df, max_distance_km=5):
     return nearby_restaurants
 
 # Load your dataset with restaurant name, address, latitude, and longitude
-df_with_lat_lon = pd.read_excel('df_with_lat_lon.xlsx')
+df_with_lat_lon = pd.read_excel('./data/raw/df_with_lat_lon.xlsx')
 
 # Remove duplicates based on the 'name' column
 df_with_lat_lon = df_with_lat_lon.drop_duplicates(subset=['Name'])
@@ -185,3 +185,4 @@ if user_input:
                 st.error("Could not fetch coordinates for the selected location.")
     else:
         st.error("No suggestions found.")
+
