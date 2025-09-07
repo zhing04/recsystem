@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import re
+import html  # for safe comment rendering
 
 import pandas as pd
 import streamlit as st
@@ -22,6 +23,37 @@ FEEDBACK_FILE = "data/raw/feedback.csv"
 Path(FEEDBACK_FILE).parent.mkdir(parents=True, exist_ok=True)
 if not os.path.isfile(FEEDBACK_FILE):
     pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
+
+# ---------- Streamlit config ----------
+st.set_page_config(layout='centered', initial_sidebar_state='expanded')
+# Global styles for feedback cards
+st.markdown("""
+<style>
+  .feedback-card{
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    padding:12px 14px;
+    margin-bottom:12px;
+    background:#ffffff;
+  }
+  .feedback-stars{
+    font-size:1.1rem;
+    margin-bottom:6px;
+  }
+  .feedback-text{
+    font-size:0.98rem;
+    color:#111827;
+    line-height:1.35;
+    word-wrap:break-word;
+    white-space:pre-wrap;
+  }
+  @media (prefers-color-scheme: dark){
+    .feedback-card{ border-color:#374151; background:#111827; }
+    .feedback-text{ color:#e5e7eb; }
+  }
+</style>
+""", unsafe_allow_html=True)
+st.sidebar.image(APP_ICON, use_container_width=True)
 
 # ---------- helpers ----------
 def _stars_from_bubbles(text: str) -> str:
@@ -46,6 +78,14 @@ def render_feedback_grid(max_rows: int = 10):
         st.caption("No feedback yet.")
         return
 
+    # Hide empty/'nan' comments
+    df['Comments'] = df['Comments'].astype(str)
+    mask_valid = df['Comments'].str.strip().ne('') & df['Comments'].str.strip().str.lower().ne('nan')
+    df = df[mask_valid]
+    if df.empty:
+        st.caption("No feedback yet.")
+        return
+
     last = df.tail(max_rows).reset_index(drop=True)
     cols = st.columns(2)
 
@@ -53,7 +93,7 @@ def render_feedback_grid(max_rows: int = 10):
         col = cols[i % 2]
         stars = _stars_from_bubbles(row.get("Reviews", ""))
         raw_comment = str(row.get("Comments", "")).strip() or "— (no comment) —"
-        safe_comment = html.escape(raw_comment)  # ensure safe HTML
+        safe_comment = html.escape(raw_comment)
         col.markdown(
             f"""
             <div class="feedback-card">
@@ -64,10 +104,6 @@ def render_feedback_grid(max_rows: int = 10):
             unsafe_allow_html=True
         )
 
-# ---------- Streamlit config ----------
-st.set_page_config(layout='centered', initial_sidebar_state='expanded')
-st.sidebar.image(APP_ICON, use_container_width=True)
-
 # ---------- load dataset (same logic as original) ----------
 df = pd.read_csv(DATA_TRIP)
 df["Location"] = df["Street Address"] + ', ' + df["Location"]
@@ -75,36 +111,9 @@ df = df.drop(['Street Address'], axis=1)
 df = df[df['Type'].notna()]
 df = df.drop_duplicates(subset='Name').reset_index(drop=True)
 
-# ---------- header & intro (original copy) ----------
+# ---------- header & intro ----------
 st.markdown("<h1 style='text-align: center;'>Restaurant Based Recommendation</h1>", unsafe_allow_html=True)
-
-st.markdown("""
-### Welcome to Restaurant Recommender!
-
-Looking for the perfect place to dine? Look no further! Our Restaurant Recommender is here to help you discover the finest dining experiences tailored to your taste.
-
-### How It Works:
-
-1. **Select Your Favorite Restaurant:**
-   Choose from a list of renowned restaurants that pique your interest.
-
-2. **Explore Similar Gems:**
-   Our advanced recommendation system analyzes customer reviews and ratings to suggest similar restaurants you might love.
-
-3. **Discover Your Next Culinary Adventure:**
-   Dive into detailed information about each recommended restaurant, including ratings, reviews, cuisine types, locations, and contact details.
-
-4. **Enjoy Your Meal:**
-   With our recommendations in hand, savor a delightful dining experience at your chosen restaurant!
-
-### Start Your Culinary Journey Now!
-
-Begin exploring the diverse culinary landscape and uncover hidden gastronomic treasures with Restaurant Recommender.
-↓
-""")
-
 st.image(Image.open(COVER_IMG), use_container_width=True)
-
 st.markdown("### Select Restaurant")
 
 # ---------- user selection ----------
@@ -117,7 +126,7 @@ def recom(dataframe, name):
         if col in dfw.columns:
             dfw = dfw.drop(columns=[col])
 
-    # TF-IDF on 'Type' (no comment filtering here)
+    # TF-IDF on 'Type'
     tfidf = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf.fit_transform(dfw['Type'].fillna('').astype(str))
     cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
@@ -137,10 +146,9 @@ def recom(dataframe, name):
         return
 
     sim_scores = list(enumerate(cosine_sim[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:11]  # top-10, skip self
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:11]
     restaurant_indices = [i for i, _ in sim_scores]
 
-    # Top 10 list (include Ratings when available)
     cols = ['Name'] + (['Ratings'] if 'Ratings' in dfw.columns else [])
     recommended = dfw.iloc[restaurant_indices][cols].copy()
     if 'Ratings' in recommended.columns:
@@ -166,7 +174,7 @@ def recom(dataframe, name):
             elif rv == '5 of 5 bubbles':
                 st.image(Image.open(RATING_IMG_50), use_container_width=True)
 
-        # Comments (if present and meaningful)
+        # Comments
         if 'Comments' in dfw.columns:
             cmt = details.get('Comments', None)
             if pd.notna(cmt) and cmt != "No Comments":
@@ -194,7 +202,7 @@ def recom(dataframe, name):
 # ---------- run recommender ----------
 recom(df, name)
 
-# ---------- feedback (original behavior, updated path) ----------
+# ---------- feedback ----------
 st.markdown("## Rate Your Experience")
 rating = st.slider('Rate this restaurant (1-5)', 1, 5)
 feedback_comment = st.text_area('Your Feedback')
@@ -205,12 +213,15 @@ if st.button('Submit Feedback'):
         pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
 
     # append
-    feedback_df = pd.read_csv(FEEDBACK_FILE)
-    new_feedback = pd.DataFrame([{'Reviews': f'{rating} of 5 bubbles', 'Comments': feedback_comment}])
-    feedback_df = pd.concat([feedback_df, new_feedback], ignore_index=True)
-    feedback_df.to_csv(FEEDBACK_FILE, index=False)
-
-    st.success('Thanks for your feedback!')
+    df_fb = pd.read_csv(FEEDBACK_FILE)
+    comment_clean = str(feedback_comment).strip()
+    if comment_clean and comment_clean.lower() != 'nan':
+        new_feedback = pd.DataFrame([{'Reviews': f'{rating} of 5 bubbles', 'Comments': comment_clean}])
+        df_fb = pd.concat([df_fb, new_feedback], ignore_index=True)
+        df_fb.to_csv(FEEDBACK_FILE, index=False)
+        st.success('Thanks for your feedback!')
+    else:
+        st.warning("Please enter a real comment (not empty).")
 
 # ---------- last 10 feedback (compact 2-column, boxed) ----------
 st.subheader("Recent Feedback")
