@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from PIL import Image
 import re
+import html
 
 # ---------- paths (match your repo layout) ----------
 APP_ICON = 'data/App_icon.png'
@@ -52,6 +53,41 @@ def render_feedback_grid(max_rows: int = 10):
 
 # ---------- Streamlit config ----------
 st.set_page_config(layout='centered', initial_sidebar_state='expanded')
+# Global styles for feedback cards
+st.markdown("""
+<style>
+  .feedback-card{
+    border:1px solid #e5e7eb;          /* light gray */
+    border-radius:12px;
+    padding:12px 14px;                  /* fixed, consistent padding */
+    margin-bottom:12px;
+    background:#ffffff;                 /* white card */
+  }
+  .feedback-stars{
+    font-size:1.1rem;
+    margin-bottom:6px;
+  }
+  .feedback-text{
+    font-size:0.98rem;
+    color:#111827;                      /* gray-900 (much darker than gray) */
+    line-height:1.35;
+    word-wrap:break-word;
+    white-space:pre-wrap;               /* keep user line breaks */
+  }
+
+  /* Dark mode adjustments (if user’s device is in dark mode) */
+  @media (prefers-color-scheme: dark){
+    .feedback-card{
+      border-color:#374151;             /* gray-700 */
+      background:#111827;               /* near black */
+    }
+    .feedback-text{
+      color:#e5e7eb;                    /* gray-200 */
+    }
+  }
+</style>
+""", unsafe_allow_html=True)
+
 st.sidebar.image(APP_ICON, use_container_width=True)
 st.markdown("<h1 style='text-align: center;'>Restaurants</h1>", unsafe_allow_html=True)
 
