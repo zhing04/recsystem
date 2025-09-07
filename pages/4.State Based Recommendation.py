@@ -10,6 +10,7 @@ from PIL import Image
 # ---------- paths (match your repo layout) ----------
 APP_ICON = 'data/App_icon.png'
 FOOTER_IMG = 'data/food_2.jpg'
+COVER_IMG = 'data/food_cover.jpg'
 RATING_IMG_45 = 'data/Ratings/Img4.5.png'
 RATING_IMG_40 = 'data/Ratings/Img4.0.png'
 RATING_IMG_50 = 'data/Ratings/Img5.0.png'
@@ -118,9 +119,6 @@ def render_feedback_grid(max_rows: int = 10):
             """,
             unsafe_allow_html=True
         )
-        #banner image
-        st.image("data/food_cover.jpg", use_container_width=True)
-
 
 def rating_to_image_path(value) -> str | None:
     """
