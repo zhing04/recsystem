@@ -41,7 +41,7 @@ st.markdown(html_temp, unsafe_allow_html=True)
 
 # Add a picture of food
 # Center-align the image using st.image
-st.image("./food-spread.jpg", use_column_width=True)
+st.image("./food-spread.jpg", use_container_width=True)
 
 
 # Add a caption
