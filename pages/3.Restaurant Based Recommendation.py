@@ -170,9 +170,18 @@ if st.button('Submit Feedback'):
     
     st.success('Thanks for your feedback!')
 
-   # --- NEW: Show last 10 feedback entries ---
-   feedback_df = pd.read_csv("data/raw/feedback.csv", header=None, names=["Feedback"])
-   st.subheader("Recent Feedback")
-   st.dataframe(feedback_df.tail(10))
-   except Exception as e:
-   st.warning(f"Could not load feedback file: {e}")
+   # Read & show recent feedback (safe even if file absent)
+if FEEDBACK_PATH.exists():
+    try:
+        df_feedback = pd.read_csv(
+            FEEDBACK_PATH,
+            header=None,
+            names=["timestamp", "feedback"],
+            on_bad_lines="skip"
+        )
+        st.subheader("Recent Feedback")
+        st.dataframe(df_feedback.tail(10), use_container_width=True)
+    except Exception as e:
+        st.caption(f"⚠️ Could not load feedback file: {e}")
+else:
+    st.caption("No feedback yet.")
