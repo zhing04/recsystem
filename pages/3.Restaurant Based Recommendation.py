@@ -163,7 +163,11 @@ if st.button('Submit Feedback'):
     new_feedback = pd.DataFrame([{'Reviews': f'{rating} of 5 bubbles', 'Comments': feedback_comment}])
     feedback_df = pd.concat([feedback_df, new_feedback], ignore_index=True)
     feedback_df.to_csv(feedback_file, index=False)
-    
+########################
+   st.subheader("All Feedback Collected")
+   df = pd.read_csv("data/raw/feedback.csv")
+   st.dataframe(df.tail(10))   # show last 10 rows
+
     # Clear the fields after submission
     st.session_state.rating = None
     st.session_state.feedback_comment = ''
