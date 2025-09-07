@@ -52,10 +52,12 @@ st.markdown("""
 
 st.sidebar.image(APP_ICON, use_container_width=True)
 st.markdown("<h1 style='text-align: center;'>State Based Recommendation</h1>", unsafe_allow_html=True)
-
 st.markdown("""
-<p style='text-align: justify;'>Embark on a gastronomic journey with our curated selection of restaurants across various states. Whether you're craving the bold flavors of Texas barbecue, the diverse cuisine of California, or the iconic dishes of New York, we've got you covered.</p>
+<p style='text-align: justify;'>Embark on a gastronomic journey with our curated selection of restaurants across various states. Whether you're craving the bold flavors of Texas barbecue, the diverse cuisine of California, or the iconic dishes of New York, we've got you covered. Our app is your passport to culinary exploration, delivering personalized recommendations based on real user reviews and ratings.</p>
+
+<p style='text-align: justify;'>Discover hidden gems, indulge in mouthwatering dishes, and immerse yourself in the vibrant food culture of your chosen destination. From cozy cafes to upscale fine dining establishments, there's something for every palate and occasion.</p>
 """, unsafe_allow_html=True)
+
 
 # ---------- helpers ----------
 def _stars_from_bubbles(text: str) -> str:
@@ -116,6 +118,9 @@ def render_feedback_grid(max_rows: int = 10):
             """,
             unsafe_allow_html=True
         )
+        #banner image
+        st.image("data/food_cover.jpg", use_container_width=True)
+
 
 def rating_to_image_path(value) -> str | None:
     """
