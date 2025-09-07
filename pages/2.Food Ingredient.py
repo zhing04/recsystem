@@ -49,7 +49,7 @@ st.caption('by Valeria Filippou')
 
 user_input = st.text_input("Enter ingredients separated by commas:")
 
-df = pd.read_csv('./Food Ingredients and Recipe Dataset with Image Name Mapping.csv')
+df = pd.read_csv('data/raw/Food Ingredients and Recipe Dataset with Image Name Mapping.csv')
 
 df = df[['Title', 'Cleaned_Ingredients']]
 
