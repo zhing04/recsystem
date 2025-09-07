@@ -9,9 +9,16 @@ from PIL import Image
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
-# ---------- paths (match your repo layout) ----------
+# ---------- paths ----------
 DATA_TRIP = "data/raw/TripAdvisor_RestauarantRecommendation1.csv"
-APP_ICON = "data/App_icon.png"
+import os
+
+icon_path = "data/App_icon.png"
+if not os.path.isfile(icon_path):
+    st.warning(f"⚠️ Sidebar icon not found at {icon_path}")
+else:
+    st.sidebar.image(icon_path, use_container_width=True)
+
 COVER_IMG = "data/restaurant.jpg"
 FOOTER_IMG = "data/food_2.jpg"
 RATING_IMG_45 = "data/Ratings/Img4.5.png"
