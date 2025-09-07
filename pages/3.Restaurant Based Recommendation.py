@@ -1,11 +1,12 @@
-import pandas as pd
-import streamlit as st
 import os
 from pathlib import Path
+import re
+
+import pandas as pd
+import streamlit as st
 from PIL import Image
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
-import re
 
 # ---------- paths (match your repo layout) ----------
 DATA_TRIP = "data/raw/TripAdvisor_RestauarantRecommendation1.csv"
@@ -17,12 +18,12 @@ RATING_IMG_40 = "data/Ratings/Img4.0.png"
 RATING_IMG_50 = "data/Ratings/Img5.0.png"
 FEEDBACK_FILE = "data/raw/feedback.csv"
 
-# Ensure feedback CSV exists with correct columns
+# ---------- ensure feedback CSV exists ----------
 Path(FEEDBACK_FILE).parent.mkdir(parents=True, exist_ok=True)
 if not os.path.isfile(FEEDBACK_FILE):
     pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
 
-# ---------- small helpers ----------
+# ---------- helpers ----------
 def _stars_from_bubbles(text: str) -> str:
     m = re.search(r"(\d(?:\.\d)?)\s*of\s*5", str(text))
     if not m:
@@ -35,7 +36,7 @@ def _stars_from_bubbles(text: str) -> str:
     return "⭐" * full + "☆" * (5 - full)
 
 def render_feedback_grid(max_rows: int = 10):
-    """Compact two-column feedback (no delete)."""
+    """Compact two-column feedback with proper boxed layout."""
     try:
         df = pd.read_csv(FEEDBACK_FILE)
     except Exception as e:
@@ -44,15 +45,22 @@ def render_feedback_grid(max_rows: int = 10):
     if df.empty:
         st.caption("No feedback yet.")
         return
+
     last = df.tail(max_rows).reset_index(drop=True)
     cols = st.columns(2)
+
     for i, row in last.iterrows():
         col = cols[i % 2]
+        stars = _stars_from_bubbles(row.get("Reviews", ""))
+        comment = str(row.get("Comments", "")).strip() or "— (no comment) —"
         with col.container(border=True):
-            stars = _stars_from_bubbles(row.get("Reviews", ""))
-            comment = str(row.get("Comments", "")).strip() or "— (no comment) —"
-            col.markdown(f"<div style='font-size:1.05rem'>{stars}</div>", unsafe_allow_html=True)
-            col.write(comment)
+            st.markdown(
+                f"""
+                <div style="font-size:1.05rem; margin-bottom:0.5rem;">{stars}</div>
+                <div style="font-size:0.95rem; color:#333;">{comment}</div>
+                """,
+                unsafe_allow_html=True
+            )
 
 # ---------- Streamlit config ----------
 st.set_page_config(layout='centered', initial_sidebar_state='expanded')
@@ -63,8 +71,7 @@ df = pd.read_csv(DATA_TRIP)
 df["Location"] = df["Street Address"] + ', ' + df["Location"]
 df = df.drop(['Street Address'], axis=1)
 df = df[df['Type'].notna()]
-df = df.drop_duplicates(subset='Name')
-df = df.reset_index(drop=True)
+df = df.drop_duplicates(subset='Name').reset_index(drop=True)
 
 # ---------- header & intro (original copy) ----------
 st.markdown("<h1 style='text-align: center;'>Recommended</h1>", unsafe_allow_html=True)
@@ -94,84 +101,90 @@ Begin exploring the diverse culinary landscape and uncover hidden gastronomic tr
 ↓
 """)
 
-image = Image.open(COVER_IMG)
-st.image(image, use_container_width=True)
+st.image(Image.open(COVER_IMG), use_container_width=True)
 
 st.markdown("### Select Restaurant")
 
 # ---------- user selection ----------
 name = st.selectbox('Select the Restaurant you like', list(df['Name'].unique()))
 
+# ---------- recommender (fixed to avoid KeyError) ----------
 def recom(dataframe, name):
-    dataframe = dataframe.drop(["Trip_advisor Url", "Menu"], axis=1)
+    dfw = dataframe.copy()
+    for col in ["Trip_advisor Url", "Menu"]:
+        if col in dfw.columns:
+            dfw = dfw.drop(columns=[col])
 
-    # Filter out restaurants without comments
-    dataframe = dataframe[dataframe['Comments'].notna() & (dataframe['Comments'] != "No Comments")]
-
-    # Creating recommendations based on 'Type'
+    # TF-IDF on 'Type' (no comment filtering here)
     tfidf = TfidfVectorizer(stop_words='english')
-    tfidf_matrix = tfidf.fit_transform(dataframe['Type'])
+    tfidf_matrix = tfidf.fit_transform(dfw['Type'].fillna('').astype(str))
     cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
 
-    # Mapping restaurant names to their indices
-    indices = pd.Series(dataframe.index, index=dataframe.Name).drop_duplicates()
+    # Map name -> index
+    indices = pd.Series(dfw.index, index=dfw['Name']).drop_duplicates()
+    if name not in indices:
+        st.warning("The selected restaurant isn’t available for similarity right now. Please pick another.")
+        return
 
-    # Index of the anchor
     idx = indices[name]
     if isinstance(idx, pd.Series):
-        idx = idx[0]
+        idx = idx.iloc[0]
 
-    # Similarities
+    if tfidf_matrix.shape[0] < 2:
+        st.info("Not enough data to compute similar restaurants.")
+        return
+
     sim_scores = list(enumerate(cosine_sim[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-    sim_scores = sim_scores[1:11]  # top-10 (skip self)
-    restaurant_indices = [i[0] for i in sim_scores]
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:11]  # top-10, skip self
+    restaurant_indices = [i for i, _ in sim_scores]
 
-    # Top 10
-    recommended = dataframe.iloc[restaurant_indices]
-    recommended = recommended[['Name', 'Ratings']]
-    recommended = recommended.sort_values(by='Ratings', ascending=False)
+    # Top 10 list (include Ratings when available)
+    cols = ['Name'] + (['Ratings'] if 'Ratings' in dfw.columns else [])
+    recommended = dfw.iloc[restaurant_indices][cols].copy()
+    if 'Ratings' in recommended.columns:
+        recommended = recommended.sort_values(by='Ratings', ascending=False)
 
     st.markdown("## Top 10 Restaurants you might like:")
+    title = st.selectbox(
+        'Restaurants most similar [Based on user ratings(collaborative)]',
+        list(recommended['Name'])
+    )
 
-    # Pick from recommended
-    title = st.selectbox('Restaurants most similar [Based on user ratings(collaborative)]', recommended['Name'])
-    if title in dataframe['Name'].values:
-        details = dataframe[dataframe['Name'] == title].iloc[0]
-        reviews = details['Reviews']
+    if title in dfw['Name'].values:
+        details = dfw.loc[dfw['Name'] == title].iloc[0]
 
-        st.markdown("### Restaurant Rating:")
+        # Rating bubbles → images
+        if 'Reviews' in details:
+            st.markdown("### Restaurant Rating:")
+            rv = str(details['Reviews'])
+            if rv == '4.5 of 5 bubbles':
+                st.image(Image.open(RATING_IMG_45), use_container_width=True)
+            elif rv == '4 of 5 bubbles':
+                st.image(Image.open(RATING_IMG_40), use_container_width=True)
+            elif rv == '5 of 5 bubbles':
+                st.image(Image.open(RATING_IMG_50), use_container_width=True)
 
-        # Review bubbles → images
-        if reviews == '4.5 of 5 bubbles':
-            st.image(Image.open(RATING_IMG_45), use_container_width=True)
-        elif reviews == '4 of 5 bubbles':
-            st.image(Image.open(RATING_IMG_40), use_container_width=True)
-        elif reviews == '5 of 5 bubbles':
-            st.image(Image.open(RATING_IMG_50), use_container_width=True)
-
-        # Comments
-        if 'Comments' in dataframe.columns:
-            comment = details['Comments']
-            if comment != "No Comments":
+        # Comments (if present and meaningful)
+        if 'Comments' in dfw.columns:
+            cmt = details.get('Comments', None)
+            if pd.notna(cmt) and cmt != "No Comments":
                 st.markdown("### Comments:")
-                st.warning(comment)
+                st.warning(str(cmt))
 
-        # Type
-        rest_type = details['Type']
-        st.markdown("### Restaurant Category:")
-        st.error(rest_type)
+        # Type / Category
+        if 'Type' in details:
+            st.markdown("### Restaurant Category:")
+            st.error(str(details['Type']))
 
-        # Location
-        location = details['Location']
-        st.markdown("### The Address:")
-        st.success(location)
+        # Address
+        if 'Location' in details:
+            st.markdown("### The Address:")
+            st.success(str(details['Location']))
 
         # Contact
-        contact_no = details['Contact Number']
-        if contact_no != "Not Available":
+        if 'Contact Number' in details and str(details['Contact Number']) != "Not Available":
             st.markdown("### Contact Details:")
-            st.info('Phone: ' + contact_no)
+            st.info("Phone: " + str(details['Contact Number']))
 
     st.text("")
     st.image(Image.open(FOOTER_IMG), use_container_width=True)
@@ -179,18 +192,17 @@ def recom(dataframe, name):
 # ---------- run recommender ----------
 recom(df, name)
 
-# ---------- feedback (same behavior as original, path updated) ----------
+# ---------- feedback (original behavior, updated path) ----------
 st.markdown("## Rate Your Experience")
 rating = st.slider('Rate this restaurant (1-5)', 1, 5)
 feedback_comment = st.text_area('Your Feedback')
 
 if st.button('Submit Feedback'):
-    # Create the CSV file if it doesn't exist (already ensured above; safe to keep)
+    # (re)ensure file exists
     if not os.path.isfile(FEEDBACK_FILE):
-        feedback_df = pd.DataFrame(columns=['Reviews', 'Comments'])
-        feedback_df.to_csv(FEEDBACK_FILE, index=False)
+        pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
 
-    # Load existing, append, save
+    # append
     feedback_df = pd.read_csv(FEEDBACK_FILE)
     new_feedback = pd.DataFrame([{'Reviews': f'{rating} of 5 bubbles', 'Comments': feedback_comment}])
     feedback_df = pd.concat([feedback_df, new_feedback], ignore_index=True)
@@ -198,6 +210,6 @@ if st.button('Submit Feedback'):
 
     st.success('Thanks for your feedback!')
 
-# ---------- last 10 feedback (compact 2-column) ----------
+# ---------- last 10 feedback (compact 2-column, boxed) ----------
 st.subheader("Recent Feedback")
 render_feedback_grid(max_rows=10)
