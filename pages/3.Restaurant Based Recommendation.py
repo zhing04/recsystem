@@ -170,17 +170,8 @@ if st.button('Submit Feedback'):
     
     st.success('Thanks for your feedback!')
 
-   # Read & show recent feedback (safe even if file absent)
-if FEEDBACK_PATH.exists():
-    try:
-        feedback_df = pd.read_csv(feedback_file),
-            header=None,
-            names=["timestamp", "feedback"],
-            on_bad_lines="skip"
-        )
-        st.subheader("Recent Feedback")
-        st.dataframe(feedback_df.tail(10), use_container_width=True)
-    except Exception as e:
-        st.caption(f"⚠️ Could not load feedback file: {e}")
-else:
-    st.caption("No feedback yet.")
+# Show recent feedback
+feedback_df = pd.read_csv(feedback_file)
+if not feedback_df.empty:
+    st.subheader("Recent Feedback")
+    st.dataframe(feedback_df.tail(10), use_container_width=True)
