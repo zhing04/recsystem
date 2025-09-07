@@ -112,9 +112,37 @@ df = df[df['Type'].notna()]
 df = df.drop_duplicates(subset='Name').reset_index(drop=True)
 
 # ---------- header & intro ----------
+# ---------- header & intro ----------
 st.markdown("<h1 style='text-align: center;'>Restaurant Based Recommendation</h1>", unsafe_allow_html=True)
+
+st.markdown("""
+### Welcome to Restaurant Recommender!
+
+Looking for the perfect place to dine? Look no further! Our Restaurant Recommender is here to help you discover the finest dining experiences tailored to your taste.
+
+### How It Works:
+
+1. **Select Your Favorite Restaurant:**
+   Choose from a list of renowned restaurants that pique your interest.
+
+2. **Explore Similar Gems:**
+   Our advanced recommendation system analyzes customer reviews and ratings to suggest similar restaurants you might love.
+
+3. **Discover Your Next Culinary Adventure:**
+   Dive into detailed information about each recommended restaurant, including ratings, reviews, cuisine types, locations, and contact details.
+
+4. **Enjoy Your Meal:**
+   With our recommendations in hand, savor a delightful dining experience at your chosen restaurant!
+
+### Start Your Culinary Journey Now!
+
+Begin exploring the diverse culinary landscape and uncover hidden gastronomic treasures with Restaurant Recommender.
+↓
+""")
+
 st.image(Image.open(COVER_IMG), use_container_width=True)
 st.markdown("### Select Restaurant")
+
 
 # ---------- user selection ----------
 name = st.selectbox('Select the Restaurant you like', list(df['Name'].unique()))
