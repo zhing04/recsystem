@@ -1,4 +1,3 @@
-
 import os
 from pathlib import Path
 import re
@@ -61,7 +60,6 @@ st.markdown("""
   }
 </style>
 """, unsafe_allow_html=True)
-st.sidebar.image(APP_ICON, use_container_width=True)
 
 # ---------- helpers ----------
 def _stars_from_bubbles(text: str) -> str:
@@ -119,7 +117,6 @@ df = df.drop(['Street Address'], axis=1)
 df = df[df['Type'].notna()]
 df = df.drop_duplicates(subset='Name').reset_index(drop=True)
 
-# ---------- header & intro ----------
 # ---------- header & intro ----------
 st.markdown("<h1 style='text-align: center;'>Restaurant Based Recommendation</h1>", unsafe_allow_html=True)
 
