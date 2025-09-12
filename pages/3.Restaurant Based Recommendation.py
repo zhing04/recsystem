@@ -1,7 +1,8 @@
+
 import os
 from pathlib import Path
 import re
-import html
+import html  # for safe comment rendering
 
 import pandas as pd
 import streamlit as st
@@ -9,27 +10,31 @@ from PIL import Image
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
-st.set_page_config(layout='centered', initial_sidebar_state='expanded')
+# ---------- paths ----------
+DATA_TRIP = "data/raw/TripAdvisor_RestauarantRecommendation1.csv"
+import os
 
-BASE_DIR = Path(__file__).parent if "__file__" in globals() else Path.cwd()
-DATA_TRIP = BASE_DIR / "data" / "raw" / "TripAdvisor_RestauarantRecommendation1.csv"
-APP_ICON = BASE_DIR / "data" / "App_icon.png"
-COVER_IMG = BASE_DIR / "data" / "restaurant.jpg"
-FOOTER_IMG = BASE_DIR / "data" / "food_2.jpg"
-RATING_IMG_45 = BASE_DIR / "data" / "Ratings" / "Img4.5.png"
-RATING_IMG_40 = BASE_DIR / "data" / "Ratings" / "Img4.0.png"
-RATING_IMG_50 = BASE_DIR / "data" / "Ratings" / "Img5.0.png"
-FEEDBACK_FILE = BASE_DIR / "data" / "raw" / "feedback.csv"
-
-if APP_ICON.exists():
-    st.sidebar.image(str(APP_ICON), use_container_width=True)
+icon_path = "data/App_icon.png"
+if not os.path.isfile(icon_path):
+    st.warning(f"⚠️ Sidebar icon not found at {icon_path}")
 else:
-    st.warning(f"⚠️ Sidebar icon not found at {APP_ICON}")
+    st.sidebar.image(icon_path, use_container_width=True)
 
+COVER_IMG = "data/restaurant.jpg"
+FOOTER_IMG = "data/food_2.jpg"
+RATING_IMG_45 = "data/Ratings/Img4.5.png"
+RATING_IMG_40 = "data/Ratings/Img4.0.png"
+RATING_IMG_50 = "data/Ratings/Img5.0.png"
+FEEDBACK_FILE = "data/raw/feedback.csv"
+
+# ---------- ensure feedback CSV exists ----------
 Path(FEEDBACK_FILE).parent.mkdir(parents=True, exist_ok=True)
 if not os.path.isfile(FEEDBACK_FILE):
     pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
 
+# ---------- Streamlit config ----------
+st.set_page_config(layout='centered', initial_sidebar_state='expanded')
+# Global styles for feedback cards
 st.markdown("""
 <style>
   .feedback-card{
@@ -56,7 +61,9 @@ st.markdown("""
   }
 </style>
 """, unsafe_allow_html=True)
+st.sidebar.image(APP_ICON, use_container_width=True)
 
+# ---------- helpers ----------
 def _stars_from_bubbles(text: str) -> str:
     m = re.search(r"(\d(?:\.\d)?)\s*of\s*5", str(text))
     if not m:
@@ -69,6 +76,7 @@ def _stars_from_bubbles(text: str) -> str:
     return "⭐" * full + "☆" * (5 - full)
 
 def render_feedback_grid(max_rows: int = 10):
+    """Compact two-column feedback with consistent padding & clear text color."""
     try:
         df = pd.read_csv(FEEDBACK_FILE)
     except Exception as e:
@@ -78,6 +86,7 @@ def render_feedback_grid(max_rows: int = 10):
         st.caption("No feedback yet.")
         return
 
+    # Hide empty/'nan' comments
     df['Comments'] = df['Comments'].astype(str)
     mask_valid = df['Comments'].str.strip().ne('') & df['Comments'].str.strip().str.lower().ne('nan')
     df = df[mask_valid]
@@ -103,12 +112,15 @@ def render_feedback_grid(max_rows: int = 10):
             unsafe_allow_html=True
         )
 
+# ---------- load dataset (same logic as original) ----------
 df = pd.read_csv(DATA_TRIP)
 df["Location"] = df["Street Address"] + ', ' + df["Location"]
 df = df.drop(['Street Address'], axis=1)
 df = df[df['Type'].notna()]
 df = df.drop_duplicates(subset='Name').reset_index(drop=True)
 
+# ---------- header & intro ----------
+# ---------- header & intro ----------
 st.markdown("<h1 style='text-align: center;'>Restaurant Based Recommendation</h1>", unsafe_allow_html=True)
 
 st.markdown("""
@@ -139,18 +151,23 @@ Begin exploring the diverse culinary landscape and uncover hidden gastronomic tr
 st.image(Image.open(COVER_IMG), use_container_width=True)
 st.markdown("### Select Restaurant")
 
+
+# ---------- user selection ----------
 name = st.selectbox('Select the Restaurant you like', list(df['Name'].unique()))
 
+# ---------- recommender (fixed to avoid KeyError) ----------
 def recom(dataframe, name):
     dfw = dataframe.copy()
     for col in ["Trip_advisor Url", "Menu"]:
         if col in dfw.columns:
             dfw = dfw.drop(columns=[col])
 
+    # TF-IDF on 'Type'
     tfidf = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf.fit_transform(dfw['Type'].fillna('').astype(str))
     cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
 
+    # Map name -> index
     indices = pd.Series(dfw.index, index=dfw['Name']).drop_duplicates()
     if name not in indices:
         st.warning("The selected restaurant isn’t available for similarity right now. Please pick another.")
@@ -182,6 +199,7 @@ def recom(dataframe, name):
     if title in dfw['Name'].values:
         details = dfw.loc[dfw['Name'] == title].iloc[0]
 
+        # Rating bubbles → images
         if 'Reviews' in details:
             st.markdown("### Restaurant Rating:")
             rv = str(details['Reviews'])
@@ -192,20 +210,24 @@ def recom(dataframe, name):
             elif rv == '5 of 5 bubbles':
                 st.image(Image.open(RATING_IMG_50), use_container_width=True)
 
+        # Comments
         if 'Comments' in dfw.columns:
             cmt = details.get('Comments', None)
             if pd.notna(cmt) and cmt != "No Comments":
                 st.markdown("### Comments:")
                 st.warning(str(cmt))
 
+        # Type / Category
         if 'Type' in details:
             st.markdown("### Restaurant Category:")
             st.error(str(details['Type']))
 
+        # Address
         if 'Location' in details:
             st.markdown("### The Address:")
             st.success(str(details['Location']))
 
+        # Contact
         if 'Contact Number' in details and str(details['Contact Number']) != "Not Available":
             st.markdown("### Contact Details:")
             st.info("Phone: " + str(details['Contact Number']))
@@ -213,16 +235,20 @@ def recom(dataframe, name):
     st.text("")
     st.image(Image.open(FOOTER_IMG), use_container_width=True)
 
+# ---------- run recommender ----------
 recom(df, name)
 
+# ---------- feedback ----------
 st.markdown("## Rate Your Experience")
 rating = st.slider('Rate this restaurant (1-5)', 1, 5)
 feedback_comment = st.text_area('Your Feedback')
 
 if st.button('Submit Feedback'):
+    # (re)ensure file exists
     if not os.path.isfile(FEEDBACK_FILE):
         pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
 
+    # append
     df_fb = pd.read_csv(FEEDBACK_FILE)
     comment_clean = str(feedback_comment).strip()
     if comment_clean and comment_clean.lower() != 'nan':
@@ -233,5 +259,6 @@ if st.button('Submit Feedback'):
     else:
         st.warning("Please enter a real comment (not empty).")
 
+# ---------- last 10 feedback (compact 2-column, boxed) ----------
 st.subheader("Recent Feedback")
 render_feedback_grid(max_rows=10)
