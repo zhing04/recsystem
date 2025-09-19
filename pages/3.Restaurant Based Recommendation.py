@@ -8,10 +8,11 @@ import streamlit as st
 from PIL import Image
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.model_selection import train_test_split
 
 # ---------- paths ----------
 DATA_TRIP = "data/raw/TripAdvisor_RestauarantRecommendation1.csv"
-import os
 
 icon_path = "data/App_icon.png"
 if not os.path.isfile(icon_path):
@@ -33,7 +34,8 @@ if not os.path.isfile(FEEDBACK_FILE):
 
 # ---------- Streamlit config ----------
 st.set_page_config(layout='centered', initial_sidebar_state='expanded')
-# Global styles for feedback cards
+
+# Global styles
 st.markdown("""
 <style>
   .feedback-card{
@@ -74,7 +76,6 @@ def _stars_from_bubbles(text: str) -> str:
     return "⭐" * full + "☆" * (5 - full)
 
 def render_feedback_grid(max_rows: int = 10):
-    """Compact two-column feedback with consistent padding & clear text color."""
     try:
         df = pd.read_csv(FEEDBACK_FILE)
     except Exception as e:
@@ -84,7 +85,6 @@ def render_feedback_grid(max_rows: int = 10):
         st.caption("No feedback yet.")
         return
 
-    # Hide empty/'nan' comments
     df['Comments'] = df['Comments'].astype(str)
     mask_valid = df['Comments'].str.strip().ne('') & df['Comments'].str.strip().str.lower().ne('nan')
     df = df[mask_valid]
@@ -110,14 +110,14 @@ def render_feedback_grid(max_rows: int = 10):
             unsafe_allow_html=True
         )
 
-# ---------- load dataset (same logic as original) ----------
+# ---------- load dataset ----------
 df = pd.read_csv(DATA_TRIP)
 df["Location"] = df["Street Address"] + ', ' + df["Location"]
 df = df.drop(['Street Address'], axis=1)
 df = df[df['Type'].notna()]
 df = df.drop_duplicates(subset='Name').reset_index(drop=True)
 
-# ---------- header & intro ----------
+# ---------- header ----------
 st.markdown("<h1 style='text-align: center;'>Restaurant Based Recommendation</h1>", unsafe_allow_html=True)
 
 st.markdown("""
@@ -125,49 +125,41 @@ st.markdown("""
 
 Looking for the perfect place to dine? Look no further! Our Restaurant Recommender is here to help you discover the finest dining experiences tailored to your taste.
 
-### How It Works:
+### Recommendation Modes:
 
-1. **Select Your Favorite Restaurant:**
-   Choose from a list of renowned restaurants that pique your interest.
+- **Content-Based Filtering:**  
+  Finds restaurants similar to the one you like (based on category/type).
+  
+- **Supervised Learning (Gradient Boosting):**  
+  Learns from ratings/sentiments and predicts which restaurants are most likely to be in the "top class".
 
-2. **Explore Similar Gems:**
-   Our advanced recommendation system analyzes customer reviews and ratings to suggest similar restaurants you might love.
-
-3. **Discover Your Next Culinary Adventure:**
-   Dive into detailed information about each recommended restaurant, including ratings, reviews, cuisine types, locations, and contact details.
-
-4. **Enjoy Your Meal:**
-   With our recommendations in hand, savor a delightful dining experience at your chosen restaurant!
-
-### Start Your Culinary Journey Now!
-
-Begin exploring the diverse culinary landscape and uncover hidden gastronomic treasures with Restaurant Recommender.
-↓
+↓ Choose a mode below to start!
 """)
 
 st.image(Image.open(COVER_IMG), use_container_width=True)
-st.markdown("### Select Restaurant")
 
+# ---------- mode selection ----------
+mode = st.radio("Select Recommendation Mode:", ["Content-Based", "Supervised Learning"])
 
-# ---------- user selection ----------
-name = st.selectbox('Select the Restaurant you like', list(df['Name'].unique()))
+# ---------- user input ----------
+if mode == "Content-Based":
+    st.markdown("### Select Restaurant")
+    name = st.selectbox('Select the Restaurant you like', list(df['Name'].unique()))
 
-# ---------- recommender (fixed to avoid KeyError) ----------
+# ---------- content-based recommender ----------
 def recom(dataframe, name):
     dfw = dataframe.copy()
     for col in ["Trip_advisor Url", "Menu"]:
         if col in dfw.columns:
             dfw = dfw.drop(columns=[col])
 
-    # TF-IDF on 'Type'
     tfidf = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf.fit_transform(dfw['Type'].fillna('').astype(str))
     cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
 
-    # Map name -> index
     indices = pd.Series(dfw.index, index=dfw['Name']).drop_duplicates()
     if name not in indices:
-        st.warning("The selected restaurant isn’t available for similarity right now. Please pick another.")
+        st.warning("The selected restaurant isn’t available. Please pick another.")
         return
 
     idx = indices[name]
@@ -188,52 +180,42 @@ def recom(dataframe, name):
         recommended = recommended.sort_values(by='Ratings', ascending=False)
 
     st.markdown("## Top 10 Restaurants you might like:")
-    title = st.selectbox(
-        'Restaurants most similar [Based on user ratings(collaborative)]',
-        list(recommended['Name'])
+    st.dataframe(recommended)
+
+# ---------- supervised recommender ----------
+def supervised_recom(dataframe, top_n=10):
+    # Ensure sentiment columns exist
+    cols = [c for c in dataframe.columns if "Sentiment" in c]
+    if not cols:
+        st.error("No sentiment columns found in dataset.")
+        return
+
+    dfw = dataframe.dropna(subset=cols).copy()
+    comp = dfw[cols].mean(axis=1)
+    y = (comp >= np.quantile(comp, 0.70)).astype(int).values
+    X = dfw[cols].values
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.25, stratify=y, random_state=42
     )
 
-    if title in dfw['Name'].values:
-        details = dfw.loc[dfw['Name'] == title].iloc[0]
+    clf = GradientBoostingClassifier(n_estimators=200, learning_rate=0.05,
+                                     max_depth=3, random_state=42)
+    clf.fit(X_train, y_train)
 
-        # Rating bubbles → images
-        if 'Reviews' in details:
-            st.markdown("### Restaurant Rating:")
-            rv = str(details['Reviews'])
-            if rv == '4.5 of 5 bubbles':
-                st.image(Image.open(RATING_IMG_45), use_container_width=True)
-            elif rv == '4 of 5 bubbles':
-                st.image(Image.open(RATING_IMG_40), use_container_width=True)
-            elif rv == '5 of 5 bubbles':
-                st.image(Image.open(RATING_IMG_50), use_container_width=True)
+    probs = clf.predict_proba(dfw[cols].values)[:, 1]
+    dfw["Match Probability"] = probs
 
-        # Comments
-        if 'Comments' in dfw.columns:
-            cmt = details.get('Comments', None)
-            if pd.notna(cmt) and cmt != "No Comments":
-                st.markdown("### Comments:")
-                st.warning(str(cmt))
+    top = dfw.sort_values("Match Probability", ascending=False).head(top_n)
 
-        # Type / Category
-        if 'Type' in details:
-            st.markdown("### Restaurant Category:")
-            st.error(str(details['Type']))
+    st.markdown("## Top Recommended Restaurants (Supervised Learning)")
+    st.dataframe(top[["Name", "Match Probability", *cols]])
 
-        # Address
-        if 'Location' in details:
-            st.markdown("### The Address:")
-            st.success(str(details['Location']))
-
-        # Contact
-        if 'Contact Number' in details and str(details['Contact Number']) != "Not Available":
-            st.markdown("### Contact Details:")
-            st.info("Phone: " + str(details['Contact Number']))
-
-    st.text("")
-    st.image(Image.open(FOOTER_IMG), use_container_width=True)
-
-# ---------- run recommender ----------
-recom(df, name)
+# ---------- run recommendation ----------
+if mode == "Content-Based":
+    recom(df, name)
+else:
+    supervised_recom(df, top_n=10)
 
 # ---------- feedback ----------
 st.markdown("## Rate Your Experience")
@@ -241,11 +223,9 @@ rating = st.slider('Rate this restaurant (1-5)', 1, 5)
 feedback_comment = st.text_area('Your Feedback')
 
 if st.button('Submit Feedback'):
-    # (re)ensure file exists
     if not os.path.isfile(FEEDBACK_FILE):
         pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
 
-    # append
     df_fb = pd.read_csv(FEEDBACK_FILE)
     comment_clean = str(feedback_comment).strip()
     if comment_clean and comment_clean.lower() != 'nan':
@@ -256,6 +236,9 @@ if st.button('Submit Feedback'):
     else:
         st.warning("Please enter a real comment (not empty).")
 
-# ---------- last 10 feedback (compact 2-column, boxed) ----------
+# ---------- recent feedback ----------
 st.subheader("Recent Feedback")
 render_feedback_grid(max_rows=10)
+
+st.text("")
+st.image(Image.open(FOOTER_IMG), use_container_width=True)
