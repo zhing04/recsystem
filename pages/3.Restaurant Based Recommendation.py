@@ -3,23 +3,20 @@ from pathlib import Path
 import re
 import html  # for safe comment rendering
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 from PIL import Image
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import linear_kernel
-from sklearn.ensemble import GradientBoostingClassifier
+
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve
+import matplotlib.pyplot as plt
 
 # ---------- paths ----------
 DATA_TRIP = "data/raw/TripAdvisor_RestauarantRecommendation1.csv"
 
 icon_path = "data/App_icon.png"
-if not os.path.isfile(icon_path):
-    st.warning(f"⚠️ Sidebar icon not found at {icon_path}")
-else:
-    st.sidebar.image(icon_path, use_container_width=True)
-
 COVER_IMG = "data/restaurant.jpg"
 FOOTER_IMG = "data/food_2.jpg"
 RATING_IMG_45 = "data/Ratings/Img4.5.png"
@@ -35,7 +32,13 @@ if not os.path.isfile(FEEDBACK_FILE):
 # ---------- Streamlit config ----------
 st.set_page_config(layout='centered', initial_sidebar_state='expanded')
 
-# Global styles
+# Sidebar icon
+if not os.path.isfile(icon_path):
+    st.warning(f"⚠️ Sidebar icon not found at {icon_path}")
+else:
+    st.sidebar.image(icon_path, use_container_width=True)
+
+# Global styles (feedback cards)
 st.markdown("""
 <style>
   .feedback-card{
@@ -72,27 +75,37 @@ def _stars_from_bubbles(text: str) -> str:
         score = float(m.group(1))
     except:
         score = 0
-    full = max(0, min(int(score), 5))
+    full = max(0, min(int(round(score)), 5))
     return "⭐" * full + "☆" * (5 - full)
 
-def render_feedback_grid(max_rows: int = 10):
+def _parse_rating_from_reviews(text: str) -> float:
+    """Extract numeric rating from strings like '4.5 of 5 bubbles'."""
+    m = re.search(r"(\d+(?:\.\d+)?)\s*of\s*5", str(text))
     try:
-        df = pd.read_csv(FEEDBACK_FILE)
+        return float(m.group(1)) if m else np.nan
+    except:
+        return np.nan
+
+def render_feedback_grid(max_rows: int = 10):
+    """Compact two-column feedback with consistent padding & clear text color."""
+    try:
+        df_fb = pd.read_csv(FEEDBACK_FILE)
     except Exception as e:
         st.caption(f"⚠️ Could not load feedback: {e}")
         return
-    if df.empty:
+    if df_fb.empty:
         st.caption("No feedback yet.")
         return
 
-    df['Comments'] = df['Comments'].astype(str)
-    mask_valid = df['Comments'].str.strip().ne('') & df['Comments'].str.strip().str.lower().ne('nan')
-    df = df[mask_valid]
-    if df.empty:
+    # Hide empty/'nan' comments
+    df_fb['Comments'] = df_fb['Comments'].astype(str)
+    mask_valid = df_fb['Comments'].str.strip().ne('') & df_fb['Comments'].str.strip().str.lower().ne('nan')
+    df_fb = df_fb[mask_valid]
+    if df_fb.empty:
         st.caption("No feedback yet.")
         return
 
-    last = df.tail(max_rows).reset_index(drop=True)
+    last = df_fb.tail(max_rows).reset_index(drop=True)
     cols = st.columns(2)
 
     for i, row in last.iterrows():
@@ -111,111 +124,162 @@ def render_feedback_grid(max_rows: int = 10):
         )
 
 # ---------- load dataset ----------
-df = pd.read_csv(DATA_TRIP)
-df["Location"] = df["Street Address"] + ', ' + df["Location"]
-df = df.drop(['Street Address'], axis=1)
-df = df[df['Type'].notna()]
+try:
+    df = pd.read_csv(DATA_TRIP)
+except Exception as e:
+    st.error(f"Could not load dataset at {DATA_TRIP}. Error: {e}")
+    st.stop()
+
+# minimal cleaning to match your original prep
+if {'Street Address', 'Location'}.issubset(df.columns):
+    df["Location"] = df["Street Address"].astype(str) + ', ' + df["Location"].astype(str)
+    df = df.drop(['Street Address'], axis=1)
+
+# drop rows with missing type only if column exists (not needed for supervised)
+if 'Type' in df.columns:
+    df = df[df['Type'].notna()]
+
 df = df.drop_duplicates(subset='Name').reset_index(drop=True)
 
-# ---------- header ----------
+# ---------- header & intro ----------
 st.markdown("<h1 style='text-align: center;'>Restaurant Based Recommendation</h1>", unsafe_allow_html=True)
 
 st.markdown("""
-### Welcome to Restaurant Recommender!
+### Welcome to the Supervised Restaurant Recommender!
 
-Looking for the perfect place to dine? Look no further! Our Restaurant Recommender is here to help you discover the finest dining experiences tailored to your taste.
+This version uses **Supervised Learning (Gradient Boosting)** to rank restaurants.
+It learns from numeric features (e.g., sentiment scores or ratings) and predicts the **probability** that a restaurant belongs to the **top class**.
 
-### Recommendation Modes:
-
-- **Content-Based Filtering:**  
-  Finds restaurants similar to the one you like (based on category/type).
-  
-- **Supervised Learning (Gradient Boosting):**  
-  Learns from ratings/sentiments and predicts which restaurants are most likely to be in the "top class".
-
-↓ Choose a mode below to start!
+**Pipeline:**
+1) Build **features (X)** from sentiment columns (preferred) or numeric ratings (fallback).  
+2) Create **labels (y)** by marking the **top X%** as positive class.  
+3) Train a **Gradient Boosting** classifier.  
+4) Rank all restaurants by predicted probability and show the **Top-N**.
 """)
 
-st.image(Image.open(COVER_IMG), use_container_width=True)
+if os.path.isfile(COVER_IMG):
+    st.image(Image.open(COVER_IMG), use_container_width=True)
 
-# ---------- mode selection ----------
-mode = st.radio("Select Recommendation Mode:", ["Content-Based", "Supervised Learning"])
+# ---------- sidebar controls ----------
+st.sidebar.header("Supervised Settings")
+top_n = st.sidebar.slider("Top-N restaurants to display", 5, 30, 10, 1)
+q = st.sidebar.slider("Positive class quantile (Top % threshold)", 0.50, 0.90, 0.70, 0.05,
+                      help="Top (1−q) fraction becomes positive class. q=0.70 → top 30% are positives.")
 
-# ---------- user input ----------
-if mode == "Content-Based":
-    st.markdown("### Select Restaurant")
-    name = st.selectbox('Select the Restaurant you like', list(df['Name'].unique()))
+# ---------- feature assembly ----------
+# Prefer sentiment columns if present
+sentiment_cols = [c for c in df.columns if "Sentiment" in c]
+numeric_cols = []
 
-# ---------- content-based recommender ----------
-def recom(dataframe, name):
-    dfw = dataframe.copy()
-    for col in ["Trip_advisor Url", "Menu"]:
-        if col in dfw.columns:
-            dfw = dfw.drop(columns=[col])
+if sentiment_cols:
+    X_source_cols = sentiment_cols
+else:
+    # Fallback: try to derive numeric rating(s)
+    if 'Reviews' in df.columns:
+        df['Rating_num'] = df['Reviews'].apply(_parse_rating_from_reviews)  # 0..5
+        numeric_cols.append('Rating_num')
+    if 'Ratings' in df.columns and pd.api.types.is_numeric_dtype(df['Ratings']):
+        numeric_cols.append('Ratings')
 
-    tfidf = TfidfVectorizer(stop_words='english')
-    tfidf_matrix = tfidf.fit_transform(dfw['Type'].fillna('').astype(str))
-    cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
+    # keep only numeric, non-null columns
+    X_source_cols = [c for c in numeric_cols if c in df.columns]
+    df = df.dropna(subset=X_source_cols)
 
-    indices = pd.Series(dfw.index, index=dfw['Name']).drop_duplicates()
-    if name not in indices:
-        st.warning("The selected restaurant isn’t available. Please pick another.")
-        return
+if not X_source_cols:
+    st.error("No suitable numeric features found. Expected sentiment columns (e.g., 'Average Food Sentiment') "
+             "or numeric ratings (parsed from 'Reviews' or a numeric 'Ratings' column).")
+    st.stop()
 
-    idx = indices[name]
-    if isinstance(idx, pd.Series):
-        idx = idx.iloc[0]
+# ---------- build X, y ----------
+X = df[X_source_cols].astype(float).values
 
-    if tfidf_matrix.shape[0] < 2:
-        st.info("Not enough data to compute similar restaurants.")
-        return
+# Label rule:
+# If using sentiment columns → composite = mean across sentiments.
+# If using ratings → composite = mean across available numeric rating features.
+composite = df[X_source_cols].astype(float).mean(axis=1)
+threshold = np.quantile(composite, q)
+y = (composite >= threshold).astype(int).values
 
-    sim_scores = list(enumerate(cosine_sim[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:11]
-    restaurant_indices = [i for i, _ in sim_scores]
-
-    cols = ['Name'] + (['Ratings'] if 'Ratings' in dfw.columns else [])
-    recommended = dfw.iloc[restaurant_indices][cols].copy()
-    if 'Ratings' in recommended.columns:
-        recommended = recommended.sort_values(by='Ratings', ascending=False)
-
-    st.markdown("## Top 10 Restaurants you might like:")
-    st.dataframe(recommended)
-
-# ---------- supervised recommender ----------
-def supervised_recom(dataframe, top_n=10):
-    # Ensure sentiment columns exist
-    cols = [c for c in dataframe.columns if "Sentiment" in c]
-    if not cols:
-        st.error("No sentiment columns found in dataset.")
-        return
-
-    dfw = dataframe.dropna(subset=cols).copy()
-    comp = dfw[cols].mean(axis=1)
-    y = (comp >= np.quantile(comp, 0.70)).astype(int).values
-    X = dfw[cols].values
-
+# Degenerate guard
+if y.sum() == 0 or y.sum() == len(y):
+    st.warning("Labels degenerated (all the same). Showing a simple sort by composite score instead.")
+    out = df.copy()
+    out["Composite"] = composite
+    top = out.sort_values("Composite", ascending=False).head(top_n)
+    show_cols = ["Name"] + (["url"] if "url" in top.columns else []) + (["Composite"] if "Composite" in top.columns else []) + X_source_cols
+    st.dataframe(top[show_cols])
+    # Footer image
+    if os.path.isfile(FOOTER_IMG):
+        st.image(Image.open(FOOTER_IMG), use_container_width=True)
+    # Feedback section continues below
+else:
+    # ---------- train/test split ----------
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.25, stratify=y, random_state=42
     )
 
-    clf = GradientBoostingClassifier(n_estimators=200, learning_rate=0.05,
-                                     max_depth=3, random_state=42)
+    # ---------- train classifier ----------
+    clf = GradientBoostingClassifier(
+        n_estimators=200, learning_rate=0.05, max_depth=3, random_state=42
+    )
     clf.fit(X_train, y_train)
 
-    probs = clf.predict_proba(dfw[cols].values)[:, 1]
-    dfw["Match Probability"] = probs
+    # ---------- evaluate on test ----------
+    y_prob = clf.predict_proba(X_test)[:, 1]
+    y_pred = (y_prob >= 0.5).astype(int)
 
-    top = dfw.sort_values("Match Probability", ascending=False).head(top_n)
+    algo_tab, res_tab = st.tabs(["🔬 Algorithm", "🏁 Results"])
 
-    st.markdown("## Top Recommended Restaurants (Supervised Learning)")
-    st.dataframe(top[["Name", "Match Probability", *cols]])
+    with algo_tab:
+        st.subheader("Model Evaluation (Test Set)")
+        st.markdown(f"**Features:** {', '.join(X_source_cols)}  \n"
+                    f"**Positive class:** Top **{int((1-q)*100)}%** by composite score")
 
-# ---------- run recommendation ----------
-if mode == "Content-Based":
-    recom(df, name)
-else:
-    supervised_recom(df, top_n=10)
+        st.markdown("**Classification Report**")
+        st.code(classification_report(y_test, y_pred, digits=3), language="text")
+
+        st.markdown("**Confusion Matrix**")
+        cm = confusion_matrix(y_test, y_pred)
+        st.write(pd.DataFrame(cm, index=["Actual 0","Actual 1"], columns=["Pred 0","Pred 1"]))
+
+        auc = roc_auc_score(y_test, y_prob)
+        fpr, tpr, _ = roc_curve(y_test, y_prob)
+        st.markdown(f"**ROC-AUC:** {auc:.3f}")
+
+        fig, ax = plt.subplots(figsize=(5,4))
+        ax.plot(fpr, tpr, label=f"AUC={auc:.3f}")
+        ax.plot([0,1], [0,1], linestyle="--")
+        ax.set_xlabel("False Positive Rate"); ax.set_ylabel("True Positive Rate")
+        ax.set_title("ROC Curve"); ax.legend(loc="lower right"); ax.grid(True)
+        st.pyplot(fig)
+
+        # Feature importance (tree models)
+        if hasattr(clf, "feature_importances_"):
+            imp = clf.feature_importances_
+            order = np.argsort(imp)[::-1]
+            imp_df = pd.DataFrame({
+                "Feature": np.array(X_source_cols)[order],
+                "Importance": imp[order]
+            })
+            st.markdown("**Feature Importance**")
+            st.bar_chart(imp_df.set_index("Feature"))
+        else:
+            st.caption("Model does not expose feature importances.")
+
+    with res_tab:
+        st.subheader("Top Recommendations (Ranked by Predicted Probability)")
+        probs_all = clf.predict_proba(X)[:, 1]
+        out = df.copy()
+        out["Match Probability"] = probs_all
+        top = out.sort_values("Match Probability", ascending=False).head(top_n)
+
+        display_cols = ["Name", "Match Probability"] + X_source_cols
+        if "url" in top.columns:
+            display_cols.insert(1, "url")
+
+        to_show = top[display_cols].copy()
+        to_show["Match Probability"] = to_show["Match Probability"].round(3)
+        st.dataframe(to_show, use_container_width=True)
 
 # ---------- feedback ----------
 st.markdown("## Rate Your Experience")
@@ -223,6 +287,7 @@ rating = st.slider('Rate this restaurant (1-5)', 1, 5)
 feedback_comment = st.text_area('Your Feedback')
 
 if st.button('Submit Feedback'):
+    # (re)ensure file exists
     if not os.path.isfile(FEEDBACK_FILE):
         pd.DataFrame(columns=['Reviews', 'Comments']).to_csv(FEEDBACK_FILE, index=False)
 
@@ -241,4 +306,5 @@ st.subheader("Recent Feedback")
 render_feedback_grid(max_rows=10)
 
 st.text("")
-st.image(Image.open(FOOTER_IMG), use_container_width=True)
+if os.path.isfile(FOOTER_IMG):
+    st.image(Image.open(FOOTER_IMG), use_container_width=True)
